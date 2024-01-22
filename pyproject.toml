@@ -170,6 +170,9 @@ max-complexity = 18
 convention = "google"
 
 [tool.ruff.per-file-ignores]
+"*/__init__.py" = [
+    "F401",
+]
 "tests/*.py" = [
     "D103",
     "S101",

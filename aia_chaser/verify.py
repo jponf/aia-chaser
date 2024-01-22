@@ -1,7 +1,7 @@
 import contextlib
 import datetime
 import itertools
-from typing import Iterator, Mapping, Optional
+from typing import Iterable, Mapping, Optional
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
@@ -14,7 +14,7 @@ from aia_chaser.exceptions import (
 
 
 def verify_certificates_chain(
-    certificates: Iterator[x509.Certificate],
+    certificates: Iterable[x509.Certificate],
     verification_time: Optional[datetime.datetime] = None,
     trusted: Optional[Mapping[str, x509.Certificate]] = None,
 ) -> None:
