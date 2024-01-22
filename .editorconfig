@@ -1,0 +1,38 @@
+# http://editorconfig.org
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+charset = utf-8
+end_of_line = lf
+
+[*.{py,rst,ini}]
+indent_style = space
+indent_size = 4
+
+[*.{html,css,scss,json,yml,yaml,tf}]
+indent_style = space
+indent_size = 2
+
+[*.py]
+multi_line_output = 3
+skip = venv/
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+
+[*.bat]
+indent_style = tab
+end_of_line = crlf
+
+[*.md]
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab

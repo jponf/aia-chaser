@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import argparse
+import os
+import re
+from pathlib import Path
+
+import toml
+
+
+PROJECT_PATH = Path(__file__).parents[1]
+PYPROJECT_PATH = os.path.join(PROJECT_PATH, "pyproject.toml")
+
+REGEX_TEMPLATE = r"^{package_name}(?:==|\s@)"
+
+
+def main():  # noqa: WPS210
+    """Prints poetry installed packages versions presented in `pyproject.toml`."""
+    parser = argparse.ArgumentParser(
+        description="System dependency version checker.",
+    )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="apply to dev requirements",
+    )
+    args = parser.parse_args()
+
+    requirements_filename = "requirements-dev.txt" if args.dev else "requirements.txt"
+    requirements_path = os.path.join(PROJECT_PATH, requirements_filename)
+    deps_section = "dev-dependencies" if args.dev else "dependencies"
+
+    with open(PYPROJECT_PATH, "r") as toml_file:
+        configs = toml.load(toml_file)
+    with open(requirements_path, "r") as fin:
+        requirements = fin.read().split("\n")
+
+    # parse `<package_name>==`` (pypi packages) or `<package_name> @`` (for git repo packages)
+    packages_list = [
+        package.lower()
+        for package in configs["tool"]["poetry"][deps_section].keys()
+        if package != "python"
+    ]
+    package_intersect = [
+        req_package
+        for package in packages_list
+        for req_package in requirements
+        if re.match(REGEX_TEMPLATE.format(package_name=package), req_package)
+    ]
+    with open(requirements_path, "w") as req_file_write:
+        for package_req in package_intersect:
+            req_file_write.write(f"{package_req}\n")
+
+
+if __name__ == "__main__":
+    main()

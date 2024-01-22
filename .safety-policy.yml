@@ -1,0 +1,29 @@
+# Safety Security and License Configuration file
+security:
+  # A severity number between 0 and 10.
+  # Some helpful reference points:
+  #   9=ignore all vulnerabilities except CRITICAL severity.
+  #   7=ignore all vulnerabilities except CRITICAL
+  ignore-cvss-severity-below: 0
+
+  # True or False. We recommend you set this to False.
+  ignore-cvss-unknown-severity: False
+
+  # Here you can list multiple specific vulnerabilities
+  # you want to ignore (optionally for a time period)
+  #
+  # We recommend making use of the optional `reason` and
+  # `expires` keys for each vulnerability that you ignore.
+  ignore-vulnerabilities:
+    # Example:
+    # Langchain prompt injection
+    # https://github.com/langchain-ai/langchain/issues/7700
+    #
+    60433:
+      reason: We do not use the vulnerable REPL tool
+      expires: "2024-03-01" # date this ignore will expire
+
+  # Suppress non-zero exit codes when vulnerabilities are found.
+  # Enable this in pipelines and CI/CD processes if you want to
+  # pass builds that have vulnerabilities
+  continue-on-vulnerability-error: False

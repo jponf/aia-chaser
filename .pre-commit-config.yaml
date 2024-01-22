@@ -1,0 +1,90 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.4.0
+    hooks:
+      - id: requirements-txt-fixer
+      - id: trailing-whitespace
+        exclude: |
+          (?x)^(
+            notebooks/
+          )
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        exclude: |
+          (?x)^(
+            notebooks/
+          )
+      - id: check-yaml
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+  - repo: https://github.com/asottile/add-trailing-comma
+    rev: v3.1.0
+    hooks:
+      - id: add-trailing-comma
+  - repo: https://github.com/psf/black
+    rev: 23.1.0
+    hooks:
+      - id: black
+        exclude: |
+          (?x)^(
+            notebooks/
+          )
+  - repo: https://github.com/pycqa/isort
+    rev: "5.12.0"
+    hooks:
+      - id: isort
+        exclude: |
+          (?x)^(
+            notebooks/
+          )
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.13
+    hooks:
+      - id: ruff # linter
+      # - id: ruff-format
+  - repo: local
+    hooks:
+      - id: update-req
+        name: Update requirements.txt and requirements-dev.txt
+        stages: [commit]
+        language: system
+        entry: make
+        files: poetry.lock|requirements.txt|requirements-dev.txt
+        pass_filenames: false
+        args: [gen-req]
+      - id: safety
+        name: Running safety check on requirements.txt
+        stages: [commit]
+        language: system
+        entry: poetry run safety
+        pass_filenames: false
+        args: [check, --full-report, -r, requirements.txt]
+      - id: mypy
+        name: Running mypy
+        stages: [commit]
+        language: system
+        entry: poetry run mypy
+        args: [--install-types, --non-interactive]
+        types: [python]
+        exclude: |
+          (?x)^(
+            scripts/|
+            notebooks/
+          )
+
+      # - id: pytest
+      #   name: pytest
+      #   stages: [commit]
+      #   language: system
+      #   entry: poetry run pytest
+      #   types: [python]
+
+      # - id: pytest-cov
+      #   name: pytest
+      #   stages: [push]
+      #   language: system
+      #   entry: poetry run pytest --cov --cov-fail-under=100
+      #   types: [python]
+      #   pass_filenames: false
