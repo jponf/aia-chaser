@@ -96,7 +96,7 @@ def _verify_root_certificate(
     trusted: Optional[Mapping[str, x509.Certificate]],
     verification_time: Optional[datetime.datetime] = None,
 ) -> None:
-    if trusted:
+    if trusted is not None:
         if subject not in trusted:
             raise RootCertificateNotTrustedError(
                 f"root certificate with subject '{subject}' not in trusted database",
