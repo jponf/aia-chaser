@@ -38,7 +38,7 @@ DEPENDENCIES := $(VIRTUAL_ENV)/.poetry-$(shell scripts/checksum pyproject.toml p
 TOOLS_FIRST_INSTALLED := $(VIRTUAL_ENV)/.tools_first_installed
 
 .PHONY:
-init: $(VIRTUAL_ENV) install-dev $(TOOLS_FIRST_INSTALLED)
+init: $(VIRTUAL_ENV) install-dev install-test $(TOOLS_FIRST_INSTALLED)
 
 .PHONY: install
 install: $(DEPENDENCIES) .cache

@@ -77,6 +77,21 @@ with urllib3.PoolManager(ssl_context=context) as pool:
     respone = pool.request("GET", url)
 ```
 
+## Development
+
+First of all, you must have the following tools installed and on
+your `$PATH`.
+
+ * [Pyenv](https://github.com/pyenv/pyenv)
+ * [Poetry](https://python-poetry.org/docs/#installation)
+ * Make
+
+Then, open a terminal on the project's directory and run:
+
+```console
+make init
+```
+
 ## Acknowledgments
 
 * This project is based on [aia](https://github.com/danilobellini/aia).
