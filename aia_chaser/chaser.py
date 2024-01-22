@@ -244,10 +244,12 @@ def _download_certificate(url_string: str) -> x509.Certificate:
         if content_type in X509_CERTIFICATE_DER_MIME:
             return x509.load_der_x509_certificate(response.read())
 
-    raise CertificateDownloadError(f"unknown Content-Type '{content_type}")
+    raise CertificateDownloadError(
+        f"unknown Content-Type '{content_type}' for {url_string}",
+    )
 
 
-class CertificateAiaInfo(NamedTuple):
+class _CertificateAiaInfo(NamedTuple):
     """Simpler format to work with  certificate info."""
 
     subject: str
@@ -283,9 +285,9 @@ def _extract_aia_information(
     return ca_issuers, ocsp_servers
 
 
-def _extract_aia_info(x509_certificate: x509.Certificate) -> CertificateAiaInfo:
+def _extract_aia_info(x509_certificate: x509.Certificate) -> _CertificateAiaInfo:
     ca_issuers, ocsp_servers = _extract_aia_information(x509_certificate)
-    return CertificateAiaInfo(
+    return _CertificateAiaInfo(
         subject=x509_certificate.subject.rfc4514_string(),
         issuer=x509_certificate.issuer.rfc4514_string(),
         aia_ca_issuers=ca_issuers,
