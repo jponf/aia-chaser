@@ -77,6 +77,7 @@ class AiaChaser(object):
 
         for subject in self._trusted:
             print("->", subject)
+        print("Trusted DB size:", len(self._trusted))
 
     def aia_chase(self, host: str, port: int = 443) -> Iterator[x509.Certificate]:
         """Generates a certificate chain from host to root certificate.
