@@ -3,6 +3,7 @@ import functools
 import socket
 import ssl
 import warnings
+from pathlib import Path
 from typing import Iterator, List, NamedTuple, Optional, Tuple, cast
 from urllib.request import urlopen
 
@@ -65,7 +66,7 @@ class AiaChaser(object):
     def __init__(self, context: Optional[ssl.SSLContext] = None) -> None:
         self._context = context or ssl.SSLContext()
         if not context:
-            self._context.load_default_certs(purpose=ssl.Purpose.SERVER_AUTH)
+            _load_default_certificates(self._context)
 
         # Load trusted certificates
         trusted_der = list(self._context.get_ca_certs(True))
@@ -74,14 +75,6 @@ class AiaChaser(object):
         self._trusted = {
             ca_cert.subject.rfc4514_string(): ca_cert for ca_cert in trusted_cert
         }
-
-        print("SSL default verify paths")
-        for file_path in ssl.get_default_verify_paths():
-            print(file_path)
-
-        for subject in self._trusted:
-            print("->", subject)
-        print("Trusted DB size:", len(self._trusted))
 
     def aia_chase(self, host: str, port: int = 443) -> Iterator[x509.Certificate]:
         """Generates a certificate chain from host to root certificate.
@@ -329,3 +322,25 @@ def _extract_aia_info(x509_certificate: x509.Certificate) -> _CertificateAiaInfo
         aia_ca_issuers=ca_issuers,
         aia_ocsp_servers=ocsp_servers,
     )
+
+
+def _load_default_certificates(context: ssl.SSLContext) -> None:
+    # Expected way to load default certificates
+    context.load_default_certs(purpose=ssl.Purpose.SERVER_AUTH)
+
+    # Note:
+    # Certificates in a capath directory aren't loaded unless they have
+    # been used at least once.
+    #
+    # To avoid an empty list of trusted certificates when a cafile does
+    # not exist and also to avoid missing certificates that only exist
+    # in capath, let's forcefully load them (this solution may not work
+    # on Windows):
+    ssl_defaults = ssl.get_default_verify_paths()
+    if ssl_defaults.capath is not None:
+        ca_files = filter(
+            lambda ca_file: ca_file.is_file(),
+            Path(ssl_defaults.capath).iterdir(),
+        )
+        for ca_file in ca_files:
+            context.load_verify_locations(ca_file)

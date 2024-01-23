@@ -38,14 +38,11 @@ jobs:
       shell: bash
       run: |
         poetry install --no-root --with dev --with test
-        ls /usr/lib/ssl
-        ls /usr/lib/ssl/certs
-
-    # - name: Lint with ruff
-    #   shell: bash
-    #   run: poetry run ruff .
-    # - name: Type check with mypy
-    #   shell: bash
-      # run: poetry run mypy .
+    - name: Lint with ruff
+      shell: bash
+      run: poetry run ruff .
+    - name: Type check with mypy
+      shell: bash
+      run: poetry run mypy .
     - name: Test with pytest
       run: poetry run pytest -s
