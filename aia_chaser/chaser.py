@@ -75,6 +75,10 @@ class AiaChaser(object):
             ca_cert.subject.rfc4514_string(): ca_cert for ca_cert in trusted_cert
         }
 
+        print("SSL default verify paths")
+        for file_path in ssl.get_default_verify_paths():
+            print(file_path)
+
         for subject in self._trusted:
             print("->", subject)
         print("Trusted DB size:", len(self._trusted))
