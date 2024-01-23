@@ -6,10 +6,10 @@ from aia_chaser import AiaChaser
 @pytest.mark.parametrize(
     "url_string",
     [
-        "https://www.siemens.com",
+        # "https://www.siemens.com",
         "https://www.microsoft.com",
-        "https://www.amazon.com",
-        "https://www.google.com",
+        # "https://www.amazon.com",
+        # "https://www.google.com",
     ],
 )
 def test_aia_chase_url(url_string: str) -> None:

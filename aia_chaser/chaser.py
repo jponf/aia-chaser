@@ -75,6 +75,9 @@ class AiaChaser(object):
             ca_cert.subject.rfc4514_string(): ca_cert for ca_cert in trusted_cert
         }
 
+        for subject in self._trusted:
+            print("->", subject)
+
     def aia_chase(self, host: str, port: int = 443) -> Iterator[x509.Certificate]:
         """Generates a certificate chain from host to root certificate.
 
