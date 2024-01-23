@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "aia_chaser"
-version = "0.1.0"
+name = "aia-chaser"
+version = "1.0.0"
 license = "MIT"
 readme = "README.md"
 # repository = ""
@@ -126,7 +126,7 @@ filterwarnings = [
 
 
 [tool.bumpversion]
-current_version = "0.1.0"
+current_version = "1.0.0"
 commit = false
 commit_args = "--no-verify"
 tag = false
