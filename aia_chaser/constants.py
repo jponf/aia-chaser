@@ -15,9 +15,9 @@ DEFAULT_SCHEME_PORT = MappingProxyType(
     },
 )
 
-X509_CERTIFICATE_DER_MIME = (
-    "application/pkix-cert",
+X509_CERTIFICATE_MIME = (
     "application/x-x509-ca-cert",
+    "application/pkix-cert",
     "binary/octet-stream",
 )
 

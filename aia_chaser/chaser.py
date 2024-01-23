@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from aia_chaser.constants import (
     DEFAULT_URLOPEN_TIMEOUT,
     DOWNLOAD_CACHE_SIZE,
-    X509_CERTIFICATE_DER_MIME,
+    X509_CERTIFICATE_MIME,
     HttpHeader,
 )
 from aia_chaser.exceptions import (
@@ -90,7 +90,18 @@ class AiaChaser(object):
         while True:
             cert_info = _extract_aia_info(cert)
 
-            # End of AIA chase: Self-signed (root) certificate
+            # Already trusted & self-signed
+            #
+            # Running until the end of some chains end up in "ValiCert Class 2
+            # Policy Validation Authority", which are not in the system's
+            # trusted database:
+            # https://security.stackexchange.com/questions/65508/what-is-the-deal-with-valicert-ssl-root-certificates
+            #
+            # This may happen with other certificate chains thereby we stop
+            # the chasing once we find a certificate that we already trust.
+            if cert_info.subject in self._trusted:
+                yield self._trusted[cert_info.subject]
+                break
             if cert_info.subject == cert_info.issuer:
                 if cert_info.issuer not in self._trusted:
                     raise RootCertificateNotTrustedError(
@@ -100,9 +111,10 @@ class AiaChaser(object):
                 yield self._trusted[cert_info.issuer]
                 break
 
+            # Yield and continue AIA chasing
             yield cert
 
-            # End of AIA chase: no more intermediate CAs
+            # No more intermediate CAs, issuer must be trusted
             if not cert_info.aia_ca_issuers:
                 if cert_info.issuer not in self._trusted:
                     raise RootCertificateNotTrustedError(
@@ -133,6 +145,10 @@ class AiaChaser(object):
                     server_hostname=host,
                 ),
             )
+
+            # Get initial, possibly incomplete, chain from peer once the
+            # functionality is supported by ssl module
+            # https://www.openssl.org/docs/man1.0.2/man3/SSL_get_peer_cert_chain.html
             der_cert = s_sock.getpeercert(True)
             if der_cert is not None:
                 return x509.load_der_x509_certificate(der_cert)
@@ -241,12 +257,24 @@ def _download_certificate(url_string: str) -> x509.Certificate:
             raise CertificateDownloadError(f"could not download {url_string}")
 
         content_type = response.headers.get(HttpHeader.CONTENT_TYPE, "")
-        if content_type in X509_CERTIFICATE_DER_MIME:
-            return x509.load_der_x509_certificate(response.read())
+        if content_type in X509_CERTIFICATE_MIME:
+            return _try_parse_certificate(response.read())
 
     raise CertificateDownloadError(
         f"unknown Content-Type '{content_type}' for {url_string}",
     )
+
+
+def _try_parse_certificate(data: bytes) -> x509.Certificate:
+    parse_fns = [x509.load_der_x509_certificate, x509.load_pem_x509_certificate]
+    exceptions = []
+    for parse_fn in parse_fns:
+        try:
+            return parse_fn(data)
+        except Exception as err:
+            exceptions.append(err)
+
+    raise CertificateDownloadError(*exceptions)
 
 
 class _CertificateAiaInfo(NamedTuple):
