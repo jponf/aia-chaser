@@ -86,9 +86,10 @@ $(VIRTUAL_ENV): ## Create python environment
 .PHONY: gen-req
 gen-req:  ## Generate requirements files from poetry
 	@ echo "$(ECHO_COLOUR)Updating requirements files$(NC)"
-	@ poetry export -f requirements.txt --without-hashes > requirements.txt
-	@ poetry export -f requirements.txt --without-hashes --with dev > requirements-dev.txt
-	@ poetry run scripts/req_fixer requirements.txt requirements-dev.txt
+	poetry export -f requirements.txt --without-hashes > requirements.txt
+	poetry export -f requirements.txt --without-hashes --with dev > requirements-dev.txt
+	poetry export -f requirements.txt --without-hashes --with test > requirements-test.txt
+	@ poetry run scripts/req_fixer requirements.txt requirements-dev.txt requirements-test.txt
 
 
 # CHECKS ######################################################################
