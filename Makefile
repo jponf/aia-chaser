@@ -64,6 +64,7 @@ $(TOOLS_FIRST_INSTALLED): .git
 	@ poetry run pre-commit install
 	@ poetry run git config commit.template .gitmessage
 	@ poetry self add poetry-plugin-export
+	@ poetry self add poetry-bumpversion
 	@ touch $@ # This will create a file named `.tools_first_installed` inside venv folder
 
 .git:
@@ -146,20 +147,6 @@ read-coverage:  ## Open last coverage report in html page
 
 
 # DOCUMENTATION ###############################################################
-
-# VERSIONING ##################################################################
-
-.PHONY: bump-minor
-bump-minor:
-	poetry run bump-my-version bump minor
-
-.PHONY: bump-major
-bump-major:
-	poetry run bump-my-version bump major
-
-.PHONY: bump-patch
-bump-patch:
-	poetry run bump-my-version bump patch
 
 
 # BUILD #######################################################################
