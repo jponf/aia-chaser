@@ -53,7 +53,7 @@ import requests
 from aia_chaser import AiaChaser
 
 chaser = AiaChaser()
-url = "https://www.mediatek.com/"
+url = "https://..."
 context = chaser.make_ssl_context_for_url(url)
 
 ca_data = chaser.fetch_ca_chain_for_url(url)
