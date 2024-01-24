@@ -5,6 +5,7 @@ import pytest
 from aia_chaser.exceptions import (
     CertificateChainError,
     CertificateTimeError,
+    CertificateTimeZoneError,
     RootCertificateNotTrustedError,
 )
 from aia_chaser.verify import verify_certificates_chain
@@ -23,13 +24,27 @@ def test_verify_chain_of_2_wrong_subject(host_and_ca) -> None:
 
 
 def test_verify_chain_of_2_wrong_validity_period(host_and_ca) -> None:
-    verification_time = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+    verification_time = datetime.datetime.now(
+        datetime.timezone.utc,
+    ) - datetime.timedelta(days=1)
+
     with pytest.raises(CertificateChainError) as exc_info:
         verify_certificates_chain(
             host_and_ca,
             verification_time=verification_time,
         )
     assert type(exc_info.value.__cause__) is CertificateTimeError
+
+
+def test_verify_chain_of_2_offset_naive_validation_time(host_and_ca) -> None:
+    verification_time = datetime.datetime.now() - datetime.timedelta(days=1)
+
+    with pytest.raises(CertificateChainError) as exc_info:
+        verify_certificates_chain(
+            host_and_ca,
+            verification_time=verification_time,
+        )
+    assert type(exc_info.value.__cause__) is CertificateTimeZoneError
 
 
 def test_verify_chain_of_2_root_not_trusted(host_and_ca) -> None:

@@ -9,6 +9,7 @@ from cryptography.exceptions import InvalidSignature
 from aia_chaser.exceptions import (
     CertificateChainError,
     CertificateTimeError,
+    CertificateTimeZoneError,
     RootCertificateNotTrustedError,
 )
 
@@ -40,7 +41,7 @@ def verify_certificates_chain(
             be raised if trusted is given and it does not contain
             `certificates[-1]`.
     """
-    verification_time = verification_time or datetime.datetime.utcnow()
+    verification_time = verification_time or _get_default_verification_time()
     with contextlib.suppress(StopIteration):
         certificates, ca_certificates = itertools.tee(certificates)
         root_cert = next(ca_certificates)
@@ -73,10 +74,10 @@ def verify_certificates_chain(
             index=chain_index,
             reason=f"issuer does not provide a supported public key [{err}]",
         ) from err
-    except CertificateTimeError as err:
+    except (CertificateTimeZoneError, CertificateTimeError) as err:
         raise CertificateChainError.from_index_and_reason(
             index=chain_index,
-            reason="issued certificate outside of validity period",
+            reason=str(err),
         ) from err
     except RootCertificateNotTrustedError as err:
         raise CertificateChainError.from_index_and_reason(
@@ -123,15 +124,50 @@ def verify_certificate_validity_period(
     Raises:
         CertificateTimeError: If the certificate is outside its validity
             period.
+        CertificateTimeZoneError: If `verification_time` is offset-naive.
     """
-    verification_time = verification_time or datetime.datetime.utcnow()
+    verification_time = verification_time or _get_default_verification_time()
+
+    if verification_time.tzinfo is None:
+        raise CertificateTimeZoneError(
+            "comparing validity period against offset-naive time is disallowed,"
+            " set the offset with `datetime.replace(tzinfo=<timezone>)",
+        )
+
+    not_valid_before = _get_not_valid_before(certificate)
+    not_valid_after = _get_not_valid_after(certificate)
+
     if (
-        not certificate.not_valid_before
+        not _get_not_valid_before(certificate)
         <= verification_time
-        <= certificate.not_valid_after
+        <= _get_not_valid_after(certificate)
     ):
         raise CertificateTimeError(
-            "certificate outside of validity period ["
-            f"{certificate.not_valid_before}, "
-            f"{certificate.not_valid_after}]",
+            "certificate outside of validity period"
+            f" [{not_valid_before}, {not_valid_after}]"
+            f" using verification time {verification_time}",
         )
+
+
+def _get_default_verification_time() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+# Since version 42 not_valid_before and not_valid_after are deprecated
+# in favor of the offset-aware alternatives not_valid_before_utc and
+# not_valid_after_utc.
+if hasattr(x509.Certificate, "not_valid_before_utc"):
+
+    def _get_not_valid_before(cert: x509.Certificate) -> datetime.datetime:
+        return cert.not_valid_before_utc
+
+    def _get_not_valid_after(cert: x509.Certificate) -> datetime.datetime:
+        return cert.not_valid_after_utc
+
+else:
+
+    def _get_not_valid_before(cert: x509.Certificate) -> datetime.datetime:
+        return cert.not_valid_before.replace(tzinfo=datetime.timezone.utc)
+
+    def _get_not_valid_after(cert: x509.Certificate) -> datetime.datetime:
+        return cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)

@@ -8,9 +8,9 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
 
-This package aims to provide authority information access (AIA) chasing
-from a host/leaf certificate to complete its chain of trust and generate
-an SSL context to establish a secure connection.
+This package provides authority information access (AIA) chasing
+from a host/leaf certificate to complete its chain of trust and
+generate an SSL context to establish a secure connection.
 
 ## Overview
 
@@ -53,7 +53,7 @@ import requests
 from aia_chaser import AiaChaser
 
 chaser = AiaChaser()
-url = "https://www.mediatek.com/"
+url = "https://..."
 context = chaser.make_ssl_context_for_url(url)
 
 ca_data = chaser.fetch_ca_chain_for_url(url)
