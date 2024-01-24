@@ -3,14 +3,16 @@ name = "aia-chaser"
 version = "1.0.0"
 license = "MIT"
 readme = "README.md"
-# repository = ""
+repository = "https://github.com/jponf/aia-chaser"
 
 description = "Chase authority information access from a host certificate to complete the chain of trust."
 
 authors = ["Josep Pon Farreny <jponfarreny@gmail.com>"]
-keywords = []
+keywords = ["AIA", "SSL", "TLS", "X.509", "Certificate Chain"]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
@@ -18,13 +20,13 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+    "Topic :: System :: Networking",
 ]
 
-# [tool.poetry.scripts]
-# aia_chaser = "aia_chaser.cli:app"
-
 [build-system]
-requires = ["poetry>=0.12"]
+requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.masonry.api"
 
 [tool.poetry.dependencies]
