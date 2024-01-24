@@ -36,5 +36,9 @@ class CertificateTimeError(AiaChaserError):
     """Certificate outside its validity period."""
 
 
+class CertificateTimeZoneError(CertificateTimeError):
+    """Cannot compare offset-aware and offset-naive times."""
+
+
 class RootCertificateNotTrustedError(AiaChaserError):
     """Root certificate not in trusted database."""
