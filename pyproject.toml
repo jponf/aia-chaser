@@ -29,6 +29,8 @@ classifiers = [
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.masonry.api"
 
+[tool.poetry_bumpversion.file."aia_chaser/__init__.py"]
+
 [tool.poetry.dependencies]
 python = "^3.8"
 cryptography = ">=40.0"
@@ -49,16 +51,11 @@ pylint = "^3.0.3" # for pyreverse
 
 # Packages vulnerabilities scan
 safety = "*"
-
-# Pre-commit
-
-
 # Other tools
 rope = "^1.11.0" # Rename variables
 pipdeptree = "^2.13.2"
 pre-commit = "^3.5.0"
 toml = "^0.10.2"
-bump-my-version = "^0.16.2"
 
 [tool.poetry.group.test]
 optional = true
