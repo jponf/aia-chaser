@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import contextlib
 import functools
+import http
 import socket
 import ssl
 import warnings
 from pathlib import Path
-from typing import Iterator, List, NamedTuple, Optional, Tuple, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 from urllib.request import urlopen
 
 from cryptography import x509
@@ -18,6 +21,7 @@ from aia_chaser.constants import (
 )
 from aia_chaser.exceptions import (
     CertificateDownloadError,
+    CertificateParseError,
     MissingPeerCertificateError,
     RootCertificateNotTrustedError,
 )
@@ -25,10 +29,14 @@ from aia_chaser.utils.url import extract_host_port_from_url
 from aia_chaser.verify import verify_certificates_chain
 
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
 __all__ = ["AiaChaser"]
 
 
-class CertificatesChain(List[x509.Certificate]):
+class CertificatesChain(list[x509.Certificate]):
     """Specialized list for x509 certificates."""
 
     def to_der(self) -> bytes:
@@ -42,7 +50,7 @@ class CertificatesChain(List[x509.Certificate]):
         )
 
 
-class AiaChaser(object):
+class AiaChaser:
     """Authority Information Access (AIA) Chaser.
 
     AIA is part of the X509 standard in RFC 5280. It's objective
@@ -63,13 +71,13 @@ class AiaChaser(object):
             default certificates.
     """
 
-    def __init__(self, context: Optional[ssl.SSLContext] = None) -> None:
+    def __init__(self, context: ssl.SSLContext | None = None) -> None:
         self._context = context or ssl.SSLContext()
         if not context:
             _load_default_certificates(self._context)
 
         # Load trusted certificates
-        trusted_der = list(self._context.get_ca_certs(True))
+        trusted_der = list(self._context.get_ca_certs(True))  # noqa: FBT003
         trusted_cert = list(map(x509.load_der_x509_certificate, trusted_der))
 
         self._trusted = {
@@ -105,10 +113,7 @@ class AiaChaser(object):
                 break
             if cert_info.subject == cert_info.issuer:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotTrustedError(
-                        f"root certificate {cert_info.issuer} not in "
-                        "trusted database",
-                    )
+                    raise RootCertificateNotTrustedError(subject=cert_info.issuer)
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -118,10 +123,7 @@ class AiaChaser(object):
             # No more intermediate CAs, issuer must be trusted
             if not cert_info.aia_ca_issuers:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotTrustedError(
-                        f"root certificate {cert_info.issuer} not in "
-                        "trusted database",
-                    )
+                    raise RootCertificateNotTrustedError(subject=cert_info.issuer)
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -150,13 +152,11 @@ class AiaChaser(object):
             # Get initial, possibly incomplete, chain from peer once the
             # functionality is supported by ssl module
             # https://www.openssl.org/docs/man1.0.2/man3/SSL_get_peer_cert_chain.html
-            der_cert = s_sock.getpeercert(True)
+            der_cert = s_sock.getpeercert(True)  # noqa: FBT003
             if der_cert is not None:
                 return x509.load_der_x509_certificate(der_cert)
 
-        raise MissingPeerCertificateError(
-            f"could not get certificate for host {host} on port {port}",
-        )
+        raise MissingPeerCertificateError(host=host, port=port)
 
     def fetch_ca_chain_for_host(
         self,
@@ -248,21 +248,35 @@ def _download_certificate(url_string: str) -> x509.Certificate:
             stacklevel=2,
         )
     elif not url_string.startswith("http:"):
-        raise CertificateDownloadError("URL scheme must be http or https")
+        raise CertificateDownloadError(
+            message="URL scheme must be http or https",
+            url_string=url_string,
+        )
 
     with urlopen(  # noqa: S310
         url_string,
         timeout=DEFAULT_URLOPEN_TIMEOUT,
     ) as response:
-        if response.status != 200:
-            raise CertificateDownloadError(f"could not download {url_string}")
+        if response.status != http.HTTPStatus.OK:
+            raise CertificateDownloadError(
+                message=f"could not download {url_string}",
+                url_string=url_string,
+            )
 
         content_type = response.headers.get(HttpHeader.CONTENT_TYPE, "")
         if content_type in X509_CERTIFICATE_MIME:
-            return _try_parse_certificate(response.read())
+            try:
+                return _try_parse_certificate(response.read())
+            except CertificateParseError as err:
+                raise CertificateDownloadError(
+                    message=str(err),
+                    url_string=url_string,
+                ) from None
 
     raise CertificateDownloadError(
-        f"unknown Content-Type '{content_type}' for {url_string}",
+        message=f"unknown Content-Type '{content_type}' for {url_string}",
+        url_string=url_string,
+        content_type=content_type,
     )
 
 
@@ -272,10 +286,10 @@ def _try_parse_certificate(data: bytes) -> x509.Certificate:
     for parse_fn in parse_fns:
         try:
             return parse_fn(data)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001, PERF203
             exceptions.append(err)
 
-    raise CertificateDownloadError(*exceptions)
+    raise CertificateParseError(reasons=[str(err) for err in exceptions])
 
 
 class _CertificateAiaInfo(NamedTuple):
@@ -283,13 +297,13 @@ class _CertificateAiaInfo(NamedTuple):
 
     subject: str
     issuer: str
-    aia_ca_issuers: List[str]
-    aia_ocsp_servers: List[str]
+    aia_ca_issuers: list[str]
+    aia_ocsp_servers: list[str]
 
 
 def _extract_aia_information(
     x509_certificate: x509.Certificate,
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     try:
         aia_extension = cast(
             x509.Extension[x509.AuthorityInformationAccess],
@@ -337,10 +351,15 @@ def _load_default_certificates(context: ssl.SSLContext) -> None:
     # in capath, let's forcefully load them (this solution may not work
     # on Windows):
     ssl_defaults = ssl.get_default_verify_paths()
+
     if ssl_defaults.capath is not None:
         ca_files = filter(
-            lambda ca_file: ca_file.is_file(),
+            lambda ca_file: ca_file.is_file() and not ca_file.name.startswith("."),
             Path(ssl_defaults.capath).iterdir(),
         )
+        # Note: We found that some ssl installations have files that
+        # are not cert, i.e., homebrew openssl has a .keepme. For now
+        # we ignore files that start with '.' but a try except might
+        # be necessary ¯\_(ツ)_/¯
         for ca_file in ca_files:
             context.load_verify_locations(ca_file)

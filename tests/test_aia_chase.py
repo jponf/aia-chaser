@@ -31,5 +31,5 @@ def test_aia_chase_url(url_string: str) -> None:
 )
 def test_aia_chase_url_no_scheme(url_string: str) -> None:
     chaser = AiaChaser()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError):  # noqa: PT011
         chaser.fetch_ca_chain_for_url(url_string=url_string)

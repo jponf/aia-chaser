@@ -1,0 +1,121 @@
+#/usr/bin/env sh
+
+SCRIPT_DIR=$(dirname "${0}")
+SCRIPT_DIR=$(realpath "${SCRIPT_DIR}")
+PROJECT_DIR=$(dirname "${SCRIPT_DIR}")
+
+# ==== Change workdir to project ====
+echo "Setting work directory to: ${PROJECT_DIR}"
+cd "${PROJECT_DIR}"
+
+
+# ==== Detect sagemaker environment ====
+SAGEMAKER_META="/opt/ml/metadata/resource-metadata.json"
+is_sagemaker=$([ -f "${SAGEMAKER_META}" ] && echo "yes" || echo "no")
+
+echo "* Is a sagemaker environment?: $is_sagemaker"
+
+# ==== Detect mise ====
+mise_path=$(which mise)
+
+echo "* Is mise installed?:" $([ -n "${mise_path}" ] && echo "yes" || echo "no")
+if [ -n "${mise_path}" ]; then
+    echo "** Mise path: ${mise_path}"
+fi
+
+# ==== Detect pyenv ====
+pyenv_path=$(which pyenv)
+
+echo "* Is pyenv installed?:" $([ -n "${pyenv_path}" ] && echo "yes" || echo "no")
+if [ -n "${pyenv_path}" ]; then
+    echo "** Pyenv path: ${pyenv_path}"
+fi
+
+
+# ==== Python ====
+BASE_PYTHON_VERSION=3.10
+
+if [ -n "${mise_path}" ]; then
+    echo "+ Installing Python via mise"
+    mise_python_version=$(mise ls-remote python | grep "${BASE_PYTHON_VERSION}\.[0-9]*$" | tail -1)
+
+    echo "++ Installing python version ${mise_python_version}..."
+    mise settings add disable_hints python_multi
+	mise use --path . "python@${mise_python_version}"
+elif [ -n "${pyenv_path}" ]; then
+    echo "+ Installing Python via pyenv"
+    pyenv_python_version=$(pyenv install --list | grep " $(PYTHON_VERSION)\.[0-9]*$" | tail -1)
+
+	echo "++ Installing python version ${pyenv_python_version}..."
+	pyenv install -s $(pyenv_python_version)
+	pyenv local $(pyenv_python_version)
+else
+    echo "* Mise and Pyenv are not installed."
+    echo "* The project will use the system's python version!"
+    echo "* $(python --version)"
+fi
+
+
+# ==== Poetry ====
+BASE_POETRY_VERSION=2.0
+
+# Detect poetry binary path ignoring mise shims
+#
+# Args:
+#    $1: Mise binary path (optional)
+detect_poetry()
+{
+    # echo "? Trying to detect if poetry is in PATH (ignoring mise)" >&2
+    poetry_path=$(which poetry | grep -v "mise")
+    if [ -n "$1" ] && [ -z "${poetry_path}"  ]; then
+        # echo "? Trying to detect if poetry is available mise" >&2
+        poetry_path=$(mise which poetry 2> /dev/null)
+    fi
+    echo "${poetry_path}"
+}
+
+poetry_path=$(detect_poetry "${mise_path}")
+
+if [ -n "${poetry_path}" ]; then
+    echo "+ Poetry already installed"
+elif [ -n "${mise_path}" ]; then
+    mise_poetry_version=$(mise ls-remote poetry | grep "^${BASE_POETRY_VERSION}\.[0-9]*$" | tail -1)
+
+	echo "+ Installing poetry version ${mise_poetry_version} using mise"
+	mise use --path . "poetry@${mise_poetry_version}"
+elif [ "${is_sagemaker}" == "yes" ]; then
+    echo "+ Installing poetry~=${BASE_POETRY_VERSION} via pip on sagemaker"
+    pip install "poetry~=${BASE_POETRY_VERSION}"
+else
+    echo "- Could not install poetry automatically, please install it manualy"
+fi
+
+poetry_path=$(detect_poetry "${mise_path}")
+if [ -n "${poetry_path}" ]; then
+    echo "* Poetry path: ${poetry_path}"
+fi
+
+
+# ==== Configure poetry ====
+
+if [ -n "${poetry_path}" ]; then
+    echo "* Configuring poetry"
+    poetry config --local virtualenvs.create true
+    poetry config --local virtualenvs.in-project true
+    poetry config --local virtualenvs.prefer-active-python true
+    # Plug-ins moved to pyproject.toml in version 2+
+    # echo "* Installing poetry export plugin"
+    # poetry self add poetry-plugin-export
+    poetry config warnings.export false
+fi
+
+
+# ==== Summary ====
+
+if [ -n "${poetry_path}" ]; then
+    echo "= Development environment configured"
+    echo "= Proceed with 'make init' to install dependencies."
+else
+    echo "= Some tools are missing"
+    echo "= Please install them before running 'make init'."
+fi

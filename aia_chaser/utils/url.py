@@ -1,10 +1,11 @@
-from typing import Tuple
+from __future__ import annotations
+
 from urllib.parse import urlsplit
 
 from aia_chaser.constants import DEFAULT_SCHEME_PORT
 
 
-def extract_host_port_from_url(url_string: str) -> Tuple[str, int]:
+def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
     """Extract host and port from a URL.
 
     Args:

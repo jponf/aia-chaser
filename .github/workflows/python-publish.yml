@@ -11,24 +11,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - uses: actions/checkout@v4
 
-    - name: Install poetry
-      run: |
-        pip install --user pipx
-        pipx ensurepath
-        pipx install poetry
-          
-    - name: Build
-      run: poetry build
-      
-    - name: Publish package
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+
+      - name: Build
+        run: poetry build
+
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
