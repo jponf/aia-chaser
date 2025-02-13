@@ -38,33 +38,23 @@ DEPENDENCIES := $(VIRTUAL_ENV)/.poetry-$(shell scripts/checksum pyproject.toml p
 TOOLS_FIRST_INSTALLED := $(VIRTUAL_ENV)/.tools_first_installed
 
 .PHONY:
-init: $(VIRTUAL_ENV) install-dev install-test $(TOOLS_FIRST_INSTALLED)
+init: $(VIRTUAL_ENV) install-dev $(TOOLS_FIRST_INSTALLED)
 
 .PHONY: install
 install: $(DEPENDENCIES) .cache
 
-.PHONY: install-test
-install-test: install
-	poetry install --with test
-
 .PHONY: install-dev
 install-dev: install
-	poetry install --with dev
-
-.PHONY: install-docs
-install-docs: install
-	poetry install --with docs
+	poetry install --with dev --with test --with docs
 
 $(DEPENDENCIES):
-	poetry install --no-root
+	poetry install
 	@ touch $@
 	@ $(MAKE) gen-req
 
 $(TOOLS_FIRST_INSTALLED): .git
 	@ poetry run pre-commit install
 	@ poetry run git config commit.template .gitmessage
-	@ poetry self add poetry-plugin-export
-	@ poetry self add poetry-bumpversion
 	@ touch $@ # This will create a file named `.tools_first_installed` inside venv folder
 
 .git:
@@ -73,16 +63,7 @@ $(TOOLS_FIRST_INSTALLED): .git
 .cache:
 	@ mkdir -p .cache
 
-$(VIRTUAL_ENV): ## Create python environment
-	$(MAKE) doctor
-	@ echo "$(ECHO_COLOUR)Configuring poetry$(NC)"
-	@ poetry config --local virtualenvs.in-project true
-	@ poetry config --local virtualenvs.prefer-active-python true
-	@ echo "$(ECHO_COLOUR)Initializing pyenv$(NC)"
-	$(eval PYENV_LATEST_VERSION=$(shell pyenv install --list | grep " $(PYTHON_VERSION)\.[0-9]*$$" | tail -1))
-	@ echo "$(ECHO_COLOUR)Installing python version $(PYENV_LATEST_VERSION)...$(NC)"
-	pyenv install -s $(PYENV_LATEST_VERSION)
-	pyenv local $(PYENV_LATEST_VERSION)
+$(VIRTUAL_ENV): doctor
 
 .PHONY: gen-req
 gen-req:  ## Generate requirements files from poetry

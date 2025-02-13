@@ -25,6 +25,10 @@ classifiers = [
     "Topic :: System :: Networking",
 ]
 
+[tool.poetry.requires-plugins]
+poetry-plugin-export = ">=1.8"
+poetry-bumpversion = "*"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.masonry.api"
@@ -41,18 +45,19 @@ optional = true
 
 [tool.poetry.group.dev.dependencies]
 # Formatters
-black = "^22.12.0"
+black = "^24"
 isort = "^5.13.2"
 
 # Linters
-mypy = "^1.8.0"
-ruff = "^0.1"
+mypy = "^1"
+ruff = "^0"
 pylint = "^3.0.3" # for pyreverse
 
 # Packages vulnerabilities scan
 safety = "*"
+
 # Other tools
-rope = "^1.11.0" # Rename variables
+rope = "^1.11.0"       # Rename variables
 pipdeptree = "^2.13.2"
 pre-commit = "^3.5.0"
 toml = "^0.10.2"
@@ -63,7 +68,7 @@ optional = true
 [tool.poetry.group.test.dependencies]
 pytest = "^7.4.4"
 pytest-cov = "^4.1.0"
-pytest-randomly = "^3.15.0"  # random shuffle tests
+pytest-randomly = "^3.15.0" # random shuffle tests
 xdoctest = "^1.1.2"
 faker = "^22.4.0"
 
@@ -105,10 +110,7 @@ disallow_incomplete_defs = false
 
 [tool.pytest.ini_options]
 cache_dir = ".cache"
-testpaths = [
-    "tests",
-    "aia_chaser"
-]
+testpaths = ["tests", "aia_chaser"]
 addopts = [
     "--strict",
     "-r sxX",
@@ -119,9 +121,7 @@ addopts = [
 ]
 console_output_style = "count"
 markers = ""
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
+filterwarnings = ["ignore::DeprecationWarning"]
 
 
 [tool.bumpversion]
@@ -132,10 +132,7 @@ tag = false
 tag_name = "{new_version}"
 allow_dirty = true
 parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)(\\.(?P<dev>post)\\d+\\.dev\\d+)?"
-serialize = [
-    "{major}.{minor}.{patch}.dev-{dev}",
-    "{major}.{minor}.{patch}"
-]
+serialize = ["{major}.{minor}.{patch}.dev-{dev}", "{major}.{minor}.{patch}"]
 message = "Version updated from {current_version} to {new_version}"
 
 [[tool.bumpversion.files]]
@@ -154,33 +151,8 @@ exclude = [
     "scripts",
 ]
 line-length = 88
-select = [
-    "A",
-    "B",
-    "C9",
-    "COM",
-    "D",
-    "I",
-    "E",
-    "F",
-    "N",
-    # "NPY",
-    "PIE",
-    "Q",
-    # "RST",
-    "RUF",
-    "S",
-    "SIM",
-    "SLOT",
-    "T",
-    "W",
-]
-ignore = [
-    "D100",
-    "D104",
-    "D107",
-    "D401",
-]
+select = ["ALL"]
+ignore = ["D100", "D104", "D107", "D401"]
 
 
 [tool.ruff.flake8-quotes]
@@ -196,11 +168,6 @@ max-complexity = 18
 convention = "google"
 
 [tool.ruff.per-file-ignores]
-"*/__init__.py" = [
-    "F401",
-]
-"tests/*.py" = [
-    "D103",
-    "S101",
-]
+"*/__init__.py" = ["F401"]
+"tests/*.py" = ["D103", "S101"]
 "aia_chaser/cli.py" = ["B008"]
