@@ -32,7 +32,7 @@ jobs:
         run: |
           pip install --user pipx
           pipx ensurepath
-          pipx install poetry
+          pipx install "poetry>=2"
       - name: Install dependencies
         shell: bash
         run: |
