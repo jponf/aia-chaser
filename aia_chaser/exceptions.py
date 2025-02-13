@@ -79,7 +79,7 @@ class CertificateTimeError(AiaChaserError):
         not_valid_after: datetime.datetime,
         verification_time: datetime.datetime,
     ) -> None:
-        super(
+        super().__init__(
             "certificate outside of validity period"
             f" [{not_valid_before}, {not_valid_after}]"
             f" using verification time {verification_time}",

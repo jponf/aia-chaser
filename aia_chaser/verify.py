@@ -157,11 +157,7 @@ def verify_certificate_validity_period(
     not_valid_before = _get_not_valid_before(certificate)
     not_valid_after = _get_not_valid_after(certificate)
 
-    if (
-        not _get_not_valid_before(certificate)
-        <= verification_time
-        <= _get_not_valid_after(certificate)
-    ):
+    if not not_valid_before <= verification_time <= not_valid_after:
         raise CertificateTimeError(
             not_valid_before=not_valid_before,
             not_valid_after=not_valid_after,
