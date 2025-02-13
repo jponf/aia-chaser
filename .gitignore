@@ -102,3 +102,7 @@ docs/*.png
 
 # Poetry code artifact settings
 poetry.toml
+
+# Mise
+mise.toml
+.mise.toml
