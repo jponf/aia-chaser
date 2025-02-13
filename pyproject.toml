@@ -171,3 +171,4 @@ convention = "google"
 "*/__init__.py" = ["F401"]
 "tests/*.py" = ["D103", "S101"]
 "aia_chaser/cli.py" = ["B008"]
+"aia_chaser/utils/url.py" = ["EM101", "EM102", "TRY003"]
