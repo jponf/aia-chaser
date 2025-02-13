@@ -1,23 +1,32 @@
+from __future__ import annotations
+
 import contextlib
 import datetime
 import itertools
-from typing import Iterable, Mapping, Optional
+from typing import TYPE_CHECKING
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
 
 from aia_chaser.exceptions import (
     CertificateChainError,
+    CertificateFingerprintError,
     CertificateTimeError,
     CertificateTimeZoneError,
     RootCertificateNotTrustedError,
 )
 
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
+
 def verify_certificates_chain(
     certificates: Iterable[x509.Certificate],
-    verification_time: Optional[datetime.datetime] = None,
-    trusted: Optional[Mapping[str, x509.Certificate]] = None,
+    verification_time: datetime.datetime | None = None,
+    trusted: Mapping[str, x509.Certificate] | None = None,
+    hash_alg: hashes.HashAlgorithm | None = None,
 ) -> None:
     """Verifies the certificates in the chain.
 
@@ -34,6 +43,8 @@ def verify_certificates_chain(
             validity period. If not given uses UTC time.
         trusted: Trusted certificates mapping from subject to certificate.
             If not provided root certificate verification will be skipped.
+        hash_alg: Hashing algorithm used for operations like fingerprint
+            comparison, etc. Defaults: to SHA-256.
 
     Raise:
         CertificateChainError: If a verification error is detected on
@@ -59,7 +70,8 @@ def verify_certificates_chain(
             chain_index += 1
 
         _verify_root_certificate(
-            root_cert.subject.rfc4514_string(),
+            root_cert,
+            hash_alg=hash_alg or hashes.SHA256(),
             trusted=trusted,
             verification_time=verification_time,
         )
@@ -93,17 +105,28 @@ def verify_certificates_chain(
 
 
 def _verify_root_certificate(
-    subject: str,
-    trusted: Optional[Mapping[str, x509.Certificate]],
-    verification_time: Optional[datetime.datetime] = None,
+    root_ca: x509.Certificate,
+    hash_alg: hashes.HashAlgorithm,
+    trusted: Mapping[str, x509.Certificate] | None,
+    verification_time: datetime.datetime | None = None,
 ) -> None:
     if trusted is not None:
-        if subject not in trusted:
-            raise RootCertificateNotTrustedError(
-                f"root certificate with subject '{subject}' not in trusted database",
+        root_ca_subject = root_ca.subject.rfc4514_string()
+        if root_ca_subject not in trusted:
+            raise RootCertificateNotTrustedError(root_ca_subject)
+
+        # Match fingerprint
+        trusted_root_ca = trusted[root_ca_subject]
+        trusted_root_ca_fp = trusted_root_ca.fingerprint(hash_alg)
+        root_ca_fp = root_ca.fingerprint(hash_alg)
+
+        if trusted_root_ca_fp != root_ca_fp:
+            raise CertificateFingerprintError(
+                fingerprint=root_ca_fp,
+                trusted_fingerprint=trusted_root_ca_fp,
             )
 
-        root_ca = trusted[subject]
+        # Verify validity period
         verify_certificate_validity_period(
             root_ca,
             verification_time=verification_time,
@@ -112,7 +135,7 @@ def _verify_root_certificate(
 
 def verify_certificate_validity_period(
     certificate: x509.Certificate,
-    verification_time: Optional[datetime.datetime] = None,
+    verification_time: datetime.datetime | None = None,
 ) -> None:
     """Verify certificate validity period (not valid before/after).
 
@@ -129,10 +152,7 @@ def verify_certificate_validity_period(
     verification_time = verification_time or _get_default_verification_time()
 
     if verification_time.tzinfo is None:
-        raise CertificateTimeZoneError(
-            "comparing validity period against offset-naive time is disallowed,"
-            " set the offset with `datetime.replace(tzinfo=<timezone>)",
-        )
+        raise CertificateTimeZoneError
 
     not_valid_before = _get_not_valid_before(certificate)
     not_valid_after = _get_not_valid_after(certificate)
@@ -143,9 +163,9 @@ def verify_certificate_validity_period(
         <= _get_not_valid_after(certificate)
     ):
         raise CertificateTimeError(
-            "certificate outside of validity period"
-            f" [{not_valid_before}, {not_valid_after}]"
-            f" using verification time {verification_time}",
+            not_valid_before=not_valid_before,
+            not_valid_after=not_valid_after,
+            verification_time=verification_time,
         )
 
 
