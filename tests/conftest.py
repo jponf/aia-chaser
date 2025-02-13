@@ -55,7 +55,7 @@ def root_ca_key() -> RSAPrivateKey:
 
 
 @pytest.fixture(scope="session")
-def root_ca(root_ca_key) -> x509.Certificate:
+def root_ca(root_ca_key: RSAPrivateKey) -> x509.Certificate:
     subject = issuer = x509.Name(
         [
             x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
