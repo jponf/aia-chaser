@@ -7,11 +7,10 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os:  [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11"]
         exclude:
           - os: macos-latest
@@ -23,26 +22,26 @@ jobs:
           - os: windows-latest
             python-version: "3.10"
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install Poetry
-      shell: bash
-      run: |
-        pip install --user pipx
-        pipx ensurepath
-        pipx install poetry
-    - name: Install dependencies
-      shell: bash
-      run: |
-        poetry install --no-root --with dev --with test
-    - name: Lint with ruff
-      shell: bash
-      run: poetry run ruff .
-    - name: Type check with mypy
-      shell: bash
-      run: poetry run mypy .
-    - name: Test with pytest
-      run: poetry run pytest -s
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Poetry
+        shell: bash
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install poetry
+      - name: Install dependencies
+        shell: bash
+        run: |
+          poetry install --with dev --with test
+      - name: Lint with ruff
+        shell: bash
+        run: poetry run ruff .
+      - name: Type check with mypy
+        shell: bash
+        run: poetry run mypy .
+      - name: Test with pytest
+        run: poetry run pytest -s

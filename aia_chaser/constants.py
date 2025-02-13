@@ -18,6 +18,7 @@ DEFAULT_SCHEME_PORT = MappingProxyType(
 X509_CERTIFICATE_MIME = (
     "application/x-x509-ca-cert",
     "application/pkix-cert",
+    "application/octet-stream",
     "binary/octet-stream",
 )
 
@@ -26,3 +27,9 @@ class HttpHeader(StrEnum):
     """HTTP header name."""
 
     CONTENT_TYPE = "Content-Type"
+
+
+class SSLReason(StrEnum):
+    """SSL error reasons."""
+
+    NO_CERTIFICATE_FOUND = "NO_CERTIFICATE_OR_CRL_FOUND"

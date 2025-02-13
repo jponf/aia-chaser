@@ -152,7 +152,7 @@ exclude = [
 ]
 line-length = 88
 select = ["ALL"]
-ignore = ["D100", "D104", "D107", "D401"]
+ignore = ["ANN101", "ANN102", "D100", "D104", "D107", "D401"]
 
 
 [tool.ruff.flake8-quotes]
