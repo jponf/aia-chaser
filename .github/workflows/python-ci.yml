@@ -39,7 +39,7 @@ jobs:
           poetry install --with dev --with test
       - name: Lint with ruff
         shell: bash
-        run: poetry run ruff .
+        run: poetry run ruff check .
       - name: Type check with mypy
         shell: bash
         run: poetry run mypy .
