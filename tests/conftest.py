@@ -1,7 +1,7 @@
 """Integration tests configuration file for pytest."""
 
 import datetime
-from typing import Sequence
+from collections.abc import Sequence
 
 import faker
 import pytest
