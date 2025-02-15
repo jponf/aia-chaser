@@ -7,7 +7,6 @@
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
-
 This package provides authority information access (AIA) chasing
 from a host/leaf certificate to complete its chain of trust and
 generate an SSL context to establish a secure connection.
@@ -26,7 +25,7 @@ the endpoint does not provide all the certificates of its chain of trust.
 
 You may have experienced that already when some HTTPS URL works on your
 browser but fail when using `curl` or `Python` + `requests`. Then this
-package could be of help to you :guide_dog:.
+package could be helpful to you :guide_dog:.
 
 ## Examples
 
@@ -75,21 +74,6 @@ chaser = AiaChaser()
 context = chaser.make_ssl_context_for_url(url)
 with urllib3.PoolManager(ssl_context=context) as pool:
     respone = pool.request("GET", url)
-```
-
-## Development
-
-First of all, you must have the following tools installed and on
-your `$PATH`.
-
- * [Pyenv](https://github.com/pyenv/pyenv)
- * [Poetry](https://python-poetry.org/docs/#installation)
- * Make
-
-Then, open a terminal on the project's directory and run:
-
-```console
-make init
 ```
 
 ## Acknowledgments
