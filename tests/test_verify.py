@@ -8,7 +8,7 @@ from aia_chaser.exceptions import (
     CertificateChainError,
     CertificateTimeError,
     CertificateTimeZoneError,
-    RootCertificateNotTrustedError,
+    RootCertificateNotFoundError,
 )
 from aia_chaser.verify import verify_certificates_chain
 
@@ -60,7 +60,7 @@ def test_verify_chain_of_2_root_not_trusted(
 ) -> None:
     with pytest.raises(CertificateChainError) as exc_info:
         verify_certificates_chain(host_and_ca, trusted={})
-    assert type(exc_info.value.__cause__) is RootCertificateNotTrustedError
+    assert type(exc_info.value.__cause__) is RootCertificateNotFoundError
 
 
 def test_verify_chain_of_2_root_trusted(

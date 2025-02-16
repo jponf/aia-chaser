@@ -6,11 +6,11 @@ import http
 import socket
 import ssl
 import warnings
-from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding
 
 from aia_chaser.constants import (
@@ -23,7 +23,11 @@ from aia_chaser.exceptions import (
     CertificateDownloadError,
     CertificateParseError,
     MissingPeerCertificateError,
-    RootCertificateNotTrustedError,
+    RootCertificateNotFoundError,
+)
+from aia_chaser.utils.cert_utils import (
+    extract_aia_information,
+    force_load_default_verify_certificates,
 )
 from aia_chaser.utils.url import extract_host_port_from_url
 from aia_chaser.verify import verify_certificates_chain
@@ -74,7 +78,7 @@ class AiaChaser:
     def __init__(self, context: ssl.SSLContext | None = None) -> None:
         self._context = context or ssl.SSLContext()
         if not context:
-            _load_default_certificates(self._context)
+            force_load_default_verify_certificates(self._context)
 
         # Load trusted certificates
         trusted_der = list(self._context.get_ca_certs(True))  # noqa: FBT003
@@ -84,17 +88,26 @@ class AiaChaser:
             ca_cert.subject.rfc4514_string(): ca_cert for ca_cert in trusted_cert
         }
 
-    def aia_chase(self, host: str, port: int = 443) -> Iterator[x509.Certificate]:
+    def aia_chase(
+        self,
+        host: str,
+        port: int = 443,
+        hash_alg: hashes.HashingAlgorithm | None = None,
+    ) -> Iterator[x509.Certificate]:
         """Generates a certificate chain from host to root certificate.
 
         Args:
             host: Host to generate the certificate chain for.
             port: Port on host to connect and retrieve the initial
                 certificate.
+            hash_alg: Hashing algorithm used for operations like fingerprint
+                comparison, etc. Defaults: to SHA-256.
 
         Yields:
             The certificates from the certificate chain, starting at host.
         """
+        hash_alg = hash_alg or hashes.SHA256()
+
         cert = self.fetch_host_cert(host=host, port=port)
         while True:
             cert_info = _extract_aia_info(cert)
@@ -113,7 +126,7 @@ class AiaChaser:
                 break
             if cert_info.subject == cert_info.issuer:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotTrustedError(subject=cert_info.issuer)
+                    raise RootCertificateNotFoundError(subject=cert_info.issuer)
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -123,7 +136,7 @@ class AiaChaser:
             # No more intermediate CAs, issuer must be trusted
             if not cert_info.aia_ca_issuers:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotTrustedError(subject=cert_info.issuer)
+                    raise RootCertificateNotFoundError(subject=cert_info.issuer)
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -298,68 +311,14 @@ class _CertificateAiaInfo(NamedTuple):
     subject: str
     issuer: str
     aia_ca_issuers: list[str]
-    aia_ocsp_servers: list[str]
-
-
-def _extract_aia_information(
-    x509_certificate: x509.Certificate,
-) -> tuple[list[str], list[str]]:
-    try:
-        aia_extension = cast(
-            x509.Extension[x509.AuthorityInformationAccess],
-            x509_certificate.extensions.get_extension_for_oid(
-                x509.ExtensionOID.AUTHORITY_INFORMATION_ACCESS,
-            ),
-        )
-    except x509.ExtensionNotFound:
-        return [], []
-
-    ca_issuers = [
-        aia_entry.access_location.value
-        for aia_entry in aia_extension.value
-        if aia_entry.access_method == x509.AuthorityInformationAccessOID.CA_ISSUERS
-    ]
-    ocsp_servers = [
-        aia_entry.access_location.value
-        for aia_entry in aia_extension.value
-        if aia_entry.access_method == x509.AuthorityInformationAccessOID.OCSP
-    ]
-
-    return ca_issuers, ocsp_servers
+    aia_ocsp_urls: list[str]
 
 
 def _extract_aia_info(x509_certificate: x509.Certificate) -> _CertificateAiaInfo:
-    ca_issuers, ocsp_servers = _extract_aia_information(x509_certificate)
+    aia_info = extract_aia_information(x509_certificate)
     return _CertificateAiaInfo(
         subject=x509_certificate.subject.rfc4514_string(),
         issuer=x509_certificate.issuer.rfc4514_string(),
-        aia_ca_issuers=ca_issuers,
-        aia_ocsp_servers=ocsp_servers,
+        aia_ca_issuers=aia_info.ca_issuers,
+        aia_ocsp_urls=aia_info.ocsp_urls,
     )
-
-
-def _load_default_certificates(context: ssl.SSLContext) -> None:
-    # Expected way to load default certificates
-    context.load_default_certs(purpose=ssl.Purpose.SERVER_AUTH)
-
-    # Note:
-    # Certificates in a capath directory aren't loaded unless they have
-    # been used at least once.
-    #
-    # To avoid an empty list of trusted certificates when a cafile does
-    # not exist and also to avoid missing certificates that only exist
-    # in capath, let's forcefully load them (this solution may not work
-    # on Windows):
-    ssl_defaults = ssl.get_default_verify_paths()
-
-    if ssl_defaults.capath is not None:
-        ca_files = filter(
-            lambda ca_file: ca_file.is_file() and not ca_file.name.startswith("."),
-            Path(ssl_defaults.capath).iterdir(),
-        )
-        # Note: We found that some ssl installations have files that
-        # are not cert, i.e., homebrew openssl has a .keepme. For now
-        # we ignore files that start with '.' but a try except might
-        # be necessary ¯\_(ツ)_/¯
-        for ca_file in ca_files:
-            context.load_verify_locations(ca_file)

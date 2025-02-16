@@ -10,6 +10,7 @@ from aia_chaser import AiaChaser
         "https://www.microsoft.com",
         "https://www.amazon.com",
         "https://www.google.com",
+        "https://segre.com",
     ],
 )
 def test_aia_chase_url(url_string: str) -> None:
