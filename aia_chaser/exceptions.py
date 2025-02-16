@@ -100,7 +100,7 @@ class CertificateTimeZoneError(AiaChaserError):
         super().__init__(message)
 
 
-class RootCertificateNotTrustedError(AiaChaserError):
+class RootCertificateNotFoundError(AiaChaserError):
     """Root certificate not in trusted database."""
 
     def __init__(self, subject: str) -> None:
