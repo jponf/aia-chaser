@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import datetime
 import http
 import itertools
 import secrets
+import warnings
 from typing import TYPE_CHECKING
-from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 
 from cryptography import x509
@@ -18,57 +19,93 @@ from cryptography.x509 import ocsp
 from aia_chaser.exceptions import (
     CertificateChainError,
     CertificateFingerprintError,
+    CertificateIssuerNameError,
+    CertificateKeyTypeError,
+    CertificateSignatureError,
     CertificateTimeError,
     CertificateTimeZoneError,
+    OcspError,
+    OcspHttpError,
+    OcspResponderCertificateError,
+    OcspResponseSignatureError,
+    OcspResponseStatusError,
+    OcspResponseUnsignedError,
+    OcspRevokedStatusError,
+    OcspUnknownStatusError,
     RootCertificateNotFoundError,
 )
 from aia_chaser.utils.cert_utils import (
     extract_aia_information,
-    select_padding_from_signature_algorithm_oid,
+    select_rsa_padding_for_signature_algorithm_oid,
 )
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from cryptography.hazmat.primitives.asymmetric.types import (
-        CertificatePublicKeyTypes,
+
+def _get_default_verification_time() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+@dataclasses.dataclass
+class VerifyCertificatesConfig:
+    """Configuration to verify certificates.
+
+    Attributes:
+        fingerprint_hash_alg: Hash algorithm used to verify that the
+            root certificate from the chain is the same as the one
+            found in the trusted certificates.
+
+        ocsp_enabled: Whether or not perform OCSP validation.
+        ocsp_hash_alg: Hash algorithm used to construct OCSP requests.
+        ocsp_ignore_unknown: Whether to ignore OCSP's status UNKNOWN or
+            consider it a verification error.
+
+        verification_time: Timestamp used to verify certificate validity
+            period. Defaults to system's time.
+    """
+
+    fingerprint_hash_alg: hashes.HashAlgorithm = dataclasses.field(
+        default_factory=hashes.SHA256,
+    )
+
+    ocsp_enabled: bool = True
+    ocsp_hash_alg: hashes.HashAlgorithm = dataclasses.field(
+        default_factory=hashes.SHA1,
+    )
+    ocsp_ignore_unknown: bool = True
+
+    verification_time: datetime.datetime = dataclasses.field(
+        default_factory=_get_default_verification_time,
     )
 
 
 def verify_certificates_chain(
     certificates: Iterable[x509.Certificate],
-    verification_time: datetime.datetime | None = None,
     trusted: Mapping[str, x509.Certificate] | None = None,
-    hash_alg: hashes.HashAlgorithm | None = None,
+    config: VerifyCertificatesConfig | None = None,
 ) -> None:
-    """Verifies the certificates in the chain.
+    """Verifies the integrity of the certificates chain.
 
     The verification checks that each certificate in the sequence
-    is signed by the next one and that all are within their validity
-    period.
-
-    TODO: Verify OCSP revoked status.
+    is signed by the next one and that all are valid certificates.
 
     Args:
         certificates: Chain of certificates starting with the leaf and
             ending in the root CA certificate.
-        verification_time: datetime value to validate the certificates
-            validity period. If not given uses UTC time.
         trusted: Trusted certificates mapping from subject, formatted as
-            rfc4514, to certificate. to certificate. If not provided root
+            rfc4514, to certificate. If not provided or empty root
             certificate verification will be skipped.
-        hash_alg: Hashing algorithm used for operations like fingerprint
-            comparison, etc. Defaults: to SHA-256.
+        config: Configuration of the verification process.
 
     Raise:
         CertificateChainError: If a verification error is detected on
-            any of the certificates from the chain. Also, it will also
-            be raised if trusted is given and it does not contain
-            `certificates[-1]`.
+            any of the certificates from the chain. It will also
+            be raised if trusted is given `certificate[-1]` is not
+            contained in it or the fingerprint does not match.
     """
-    verification_time = verification_time or _get_default_verification_time()
-    hash_alg = hash_alg or hashes.SHA256()
+    config = config or VerifyCertificatesConfig()
 
     with contextlib.suppress(StopIteration):
         certificates, ca_certificates = itertools.tee(certificates)
@@ -79,53 +116,81 @@ def verify_certificates_chain(
         for issued, issuer in zip(certificates, ca_certificates):
             root_cert = issuer
 
-            with open("issued.crt", "wb") as fh:
-                fh.write(issued.public_bytes(serialization.Encoding.DER))
-            with open("issuer.crt", "wb") as fh:
-                fh.write(issuer.public_bytes(serialization.Encoding.DER))
-
             verify_certificate_validity_period(
                 issued,
-                verification_time=verification_time,
+                verification_time=config.verification_time,
             )
-            issued.verify_directly_issued_by(issuer)
-            verify_ocsp_status(issued, issuer)  # , hash_alg)
+            verify_directly_issued_by(certificate=issued, issuer=issuer)
+            if config.ocsp_enabled:
+                verify_ocsp_status(
+                    certificate=issued,
+                    issuer=issuer,
+                    hash_alg=config.ocsp_hash_alg,
+                    ignore_unknown=config.ocsp_ignore_unknown,
+                )
 
             chain_index += 1
 
-        if trusted is not None:
+        if trusted:
             verify_root_certificate(
                 root_cert,
-                hash_alg=hash_alg,
+                hash_alg=config.fingerprint_hash_alg,
                 trusted=trusted,
-                verification_time=verification_time,
+                verification_time=config.verification_time,
             )
-    except ValueError as err:
+    except (
+        CertificateIssuerNameError,
+        CertificateSignatureError,
+        CertificateTimeZoneError,
+        CertificateTimeError,
+        RootCertificateNotFoundError,
+    ) as err:
         raise CertificateChainError.from_index_and_reason(
             index=chain_index,
-            reason=f"issued issuer name ({issued.issuer}) does not"
-            f" match issuer subject ({issuer.subject})",
+            reason=str(err),
         ) from err
     except TypeError as err:
         raise CertificateChainError.from_index_and_reason(
             index=chain_index,
-            reason=f"issuer does not provide a supported public key [{err}]",
+            reason=f"certificate does not provide a supported public key [{err}]",
         ) from err
-    except (CertificateTimeZoneError, CertificateTimeError) as err:
-        raise CertificateChainError.from_index_and_reason(
-            index=chain_index,
-            reason=str(err),
-        ) from err
-    except RootCertificateNotFoundError as err:
-        raise CertificateChainError.from_index_and_reason(
-            index=chain_index,
-            reason=str(err),
+
+
+def verify_directly_issued_by(
+    certificate: x509.Certificate,
+    issuer: x509.Certificate,
+) -> None:
+    """Verifies that a certificate was issued by the provided issuer.
+
+    This function delegates to `x509.Certificate.verify_directly_issued_by`
+    to check if the given certificate's issuer matches the provided issuer
+    certificate and to validate the issuer's signature. If the check fails,
+    specific exceptions are raised to indicate the type of failure.
+
+    Args:
+        certificate: The certificate to validate.
+        issuer: The certificate of the issuer expected to have issued the
+            given certificate.
+
+    Raises:
+        CertificateIssuerNameError: If the issuer's subject name does not match
+            the certificate's issuer name.
+        CertificateIssuerSignatureError: If the issuer's signature on the certificate
+            is invalid.
+    """
+    try:
+        certificate.verify_directly_issued_by(issuer)
+    except TypeError as err:
+        raise CertificateKeyTypeError(str(err)) from err
+    except ValueError as err:
+        raise CertificateIssuerNameError(
+            cert_issuer=certificate.subject.rfc4514_string(),
+            issuer_subject=issuer.subject.rfc4514_string(),
         ) from err
     except InvalidSignature as err:
-        raise CertificateChainError.from_index_and_reason(
-            index=chain_index,
-            reason=f"issuer ({issuer.subject}) did not sign certificate"
-            f" ({issued.subject})",
+        raise CertificateSignatureError(
+            certificate=certificate.subject.rfc4514_string(),
+            issuer=issuer.subject.rfc4514_string(),
         ) from err
 
 
@@ -177,88 +242,11 @@ def verify_root_certificate(
     )
 
 
-def verify_ocsp_status(
-    certificate: x509.Certificate,
-    issuer: x509.Certificate,
-    # hash_alg: hashes.HashAlgorithm | None = None,
-) -> ocsp.OCSPSingleResponse:
-    aia_info = extract_aia_information(certificate)
-    nonce = secrets.token_bytes(24)
-
-    if aia_info.ocsp_urls:
-        builder = ocsp.OCSPRequestBuilder()
-        builder = builder.add_certificate(certificate, issuer, hashes.SHA1())
-        builder = builder.add_extension(x509.OCSPNonce(nonce), critical=False)
-        ocsp_request = builder.build()
-
-        for ocsp_url in aia_info.ocsp_urls:
-            _run_ocsp_request(
-                ocsp_request=ocsp_request,
-                ocsp_url=ocsp_url,
-                issuer_key=issuer.public_key(),
-            )
-
-
-def _run_ocsp_request(
-    ocsp_request: ocsp.OCSPRequest,
-    ocsp_url: str,
-    issuer_key: CertificatePublicKeyTypes,
-) -> ocsp.OCSPCertStatus:
-    http_request = Request(  # noqa: S310
-        url=ocsp_url,
-        data=ocsp_request.public_bytes(serialization.Encoding.DER),
-        headers={"Content-Type": "application/ocsp-request"},
-        method="POST",
-    )
-
-    with urlopen(http_request) as response:  # noqa: S310
-        if response.status != http.HTTPStatus.OK:
-            raise Exception("http status error")
-        ocsp_response_data = response.read()
-
-    ocsp_resp = ocsp.load_der_ocsp_response(ocsp_response_data)
-    if ocsp_resp.response_status != ocsp.OCSPResponseStatus.SUCCESSFUL:
-        raise Exception(f"OCSP response was not successful {ocsp_resp.response_status}")
-
-    all_responses = list(ocsp_resp.responses)
-    if len(all_responses) != 1:
-        raise ValueError("exactly one response is expected")
-    single_response = all_responses[0]
-
-    # Verify response signature
-    padding_scheme = select_padding_from_signature_algorithm_oid(
-        signature_alg_oid=ocsp_resp.signature_algorithm_oid,
-        signature_hash_alg=ocsp_resp.signature_hash_algorithm,
-    )
-
-    try:
-        if isinstance(issuer_key, rsa.RSAPublicKey):
-            issuer_key.verify(
-                signature=ocsp_resp.signature,
-                data=ocsp_resp.tbs_response_bytes,
-                padding=padding_scheme,
-                algorithm=ocsp_resp.signature_hash_algorithm,
-            )
-        elif isinstance(issuer_key, ec.EllipticCurvePublicKey):
-            issuer_key.verify(
-                signature=ocsp_resp.signature,
-                data=ocsp_resp.tbs_response_bytes,
-                signature_algorithm=ec.ECDSA(ocsp_resp.signature_hash_algorithm),
-            )
-        else:
-            raise Exception("Unsupported public key type")
-    except InvalidSignature as err:
-        raise Exception(f"OCSP signature {err}")
-
-    # Check certificate status
-    return single_response
-
-
 def verify_certificate_validity_period(
     certificate: x509.Certificate,
     verification_time: datetime.datetime | None = None,
 ) -> None:
-    """Verify certificate validity period (not valid before/after).
+    """Verifies certificate validity period (not valid before/after).
 
     Args:
         certificate: Certificate to verify.
@@ -286,8 +274,160 @@ def verify_certificate_validity_period(
         )
 
 
-def _get_default_verification_time() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+######################
+# Verify OCSP Status #
+######################
+
+
+def verify_ocsp_status(
+    certificate: x509.Certificate,
+    issuer: x509.Certificate,
+    hash_alg: hashes.HashAlgorithm | None = None,
+    nonce_size: int = 20,
+    *,
+    ignore_unknown: bool = True,
+) -> None:
+    """Verifies the status of a certificate using Online Certificate Status Protocol.
+
+    Args:
+        certificate: The certificate whose revocation status needs to be
+            verified.
+        issuer: The issuer certificate that signed the target certificate.
+        hash_alg: The hashing algorithm used to generate the OCSP request.
+            Defaults to `hashes.SHA1`.
+        nonce_size: The size (in bytes) of the OCSP nonce. Defaults to 20.
+        ignore_unknown: If True (default), ignores certificates with an
+            `UNKNOWN` OCSP status. If False, raises an exception.
+
+    Raises:
+        OcspRevokedStatusError:
+            If the certificate status is `REVOKED` in the OCSP response.
+        OcspUnknownStatusError:
+            If the certificate status is `UNKNOWN` in the OCSP response
+            and `ignore_unknown` is False.
+
+    Warnings:
+        UserWarning:
+            A warning is issued if a hash algorithm other than SHA-1 is
+            used, as some OCSP servers may not support other hash algorithms
+            and may fail with `UNAUTHORIZED` or `MALFORMED` responses.
+    """
+    hash_alg = hash_alg or hashes.SHA1()  # noqa: S303
+    aia_info = extract_aia_information(certificate)
+    nonce = secrets.token_bytes(nonce_size)
+
+    if hash_alg.name.lower() != "sha1":
+        warnings.warn(
+            "Some OCSP servers may fail with UNAUTHORIZED or MALFORMED "
+            " responses if request hash is different than SHA1",
+            category=UserWarning,
+            stacklevel=2,
+        )
+
+    if aia_info.ocsp_urls:
+        builder = ocsp.OCSPRequestBuilder()
+        builder = builder.add_certificate(certificate, issuer, hash_alg)
+        builder = builder.add_extension(x509.OCSPNonce(nonce), critical=False)
+        ocsp_request = builder.build()
+
+        for ocsp_url in aia_info.ocsp_urls:
+            last_status = _run_ocsp_request(
+                ocsp_request=ocsp_request,
+                ocsp_url=ocsp_url,
+                issuer=issuer,
+            )
+            if last_status == ocsp.OCSPCertStatus.REVOKED:
+                raise OcspRevokedStatusError(certificate.subject.rfc4514_string())
+            if last_status == ocsp.OCSPCertStatus.UNKNOWN and not ignore_unknown:
+                raise OcspUnknownStatusError(certificate.subject.rfc4514_string())
+
+
+def _run_ocsp_request(
+    ocsp_request: ocsp.OCSPRequest,
+    ocsp_url: str,
+    issuer: x509.Certificate,
+) -> ocsp.OCSPCertStatus:
+    http_request = Request(  # noqa: S310
+        url=ocsp_url,
+        data=ocsp_request.public_bytes(serialization.Encoding.DER),
+        headers={"Content-Type": "application/ocsp-request"},
+        method="POST",
+    )
+
+    with urlopen(http_request) as response:  # noqa: S310
+        if response.status != http.HTTPStatus.OK:
+            raise OcspHttpError(ocsp_url=ocsp_url, http_status=response.status)
+        ocsp_response_data = response.read()
+
+    ocsp_resp = ocsp.load_der_ocsp_response(ocsp_response_data)
+    if ocsp_resp.response_status != ocsp.OCSPResponseStatus.SUCCESSFUL:
+        raise OcspResponseStatusError(ocsp_resp.response_status)
+
+    all_responses = list(ocsp_resp.responses)
+    if len(all_responses) != 1:
+        raise OcspError("exactly one response is expected")  # noqa: EM101, TRY003
+    single_response = all_responses[0]
+
+    # Verify response signature
+    if ocsp_resp.signature_hash_algorithm is None:
+        raise OcspResponseUnsignedError
+
+    responder_cert = _get_ocsp_responder_certificate(
+        ocsp_response=ocsp_resp,
+        issuer=issuer,
+    )
+    responder_key = responder_cert.public_key()
+
+    try:
+        if isinstance(responder_key, rsa.RSAPublicKey):
+            responder_key.verify(
+                signature=ocsp_resp.signature,
+                data=ocsp_resp.tbs_response_bytes,
+                padding=select_rsa_padding_for_signature_algorithm_oid(
+                    signature_alg_oid=ocsp_resp.signature_algorithm_oid,
+                    signature_hash_alg=ocsp_resp.signature_hash_algorithm,
+                ),
+                algorithm=ocsp_resp.signature_hash_algorithm,
+            )
+        elif isinstance(responder_key, ec.EllipticCurvePublicKey):
+            responder_key.verify(
+                signature=ocsp_resp.signature,
+                data=ocsp_resp.tbs_response_bytes,
+                signature_algorithm=ec.ECDSA(
+                    ocsp_resp.signature_hash_algorithm,
+                ),
+            )
+        else:
+            raise CertificateKeyTypeError(
+                reason=f"unsupported key type {type(responder_key)}",
+            )
+    except InvalidSignature:
+        raise OcspResponseSignatureError(
+            responder_cert.subject.rfc4514_string(),
+        ) from None
+
+    # Check certificate status
+    return single_response.certificate_status
+
+
+def _get_ocsp_responder_certificate(
+    ocsp_response: ocsp.OCSPResponse,
+    issuer: x509.Certificate,
+) -> x509.Certificate:
+    responder_cert = issuer
+
+    # We only request OCSP of a single certificate so the response
+    # should only contain one responder certificate, if any.
+    if ocsp_response.certificates:
+        responder_cert = ocsp_response.certificates[0]
+
+        try:
+            verify_directly_issued_by(certificate=responder_cert, issuer=issuer)
+        except (CertificateIssuerNameError, CertificateSignatureError) as err:
+            raise OcspResponderCertificateError(err) from None
+
+    # Fallback to issuer as responder
+    return responder_cert
 
 
 # Since version 42 not_valid_before and not_valid_after are deprecated

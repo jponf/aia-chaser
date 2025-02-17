@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import ssl
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
+
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives import hashes
 
 
 def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
@@ -100,12 +103,16 @@ _PADDING_PKCS1V15_OIDS = (
 )
 
 
-def select_padding_from_signature_algorithm_oid(
+def select_rsa_padding_for_signature_algorithm_oid(
     signature_alg_oid: x509.ObjectIdentifier,
     signature_hash_alg: hashes.HashAlgorithm | None,
-) -> padding.AsymmetricPadding | None:
+) -> padding.AsymmetricPadding:
     """Select padding for a given signature algorithm OID."""
     if signature_alg_oid == x509.SignatureAlgorithmOID.RSASSA_PSS:
+        if signature_hash_alg is None:
+            msg = "RSASSA-PSS signature requires a hash algorithm"
+            raise ValueError(msg)
+
         return padding.PSS(
             mgf=padding.MGF1(signature_hash_alg),
             salt_length=padding.PSS.MAX_LENGTH,
@@ -113,4 +120,5 @@ def select_padding_from_signature_algorithm_oid(
     if signature_alg_oid in _PADDING_PKCS1V15_OIDS:
         return padding.PKCS1v15()
 
-    return None
+    msg = f"unknown padding for signature algorithm oid {signature_alg_oid}"
+    raise ValueError(msg)
