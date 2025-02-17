@@ -6,10 +6,23 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.serialization import Encoding
 
 
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives import hashes
+
+
+def certificates_to_der(certificates: list[x509.Certificate]) -> bytes:
+    """DER representation of the given certificates."""
+    return b"".join(cert.public_bytes(Encoding.DER) for cert in certificates)
+
+
+def certificates_to_pem(certificates: list[x509.Certificate]) -> str:
+    """PEM representation of the given certificates."""
+    return "\n".join(
+        cert.public_bytes(Encoding.PEM).decode("ascii") for cert in certificates
+    )
 
 
 def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
