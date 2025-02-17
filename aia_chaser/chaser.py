@@ -10,15 +10,9 @@ from typing import TYPE_CHECKING, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding
 
-from aia_chaser.constants import (
-    DEFAULT_URLOPEN_TIMEOUT,
-    DOWNLOAD_CACHE_SIZE,
-    X509_CERTIFICATE_MIME,
-    HttpHeader,
-)
+from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
 from aia_chaser.exceptions import (
     CertificateDownloadError,
     CertificateParseError,
@@ -92,7 +86,6 @@ class AiaChaser:
         self,
         host: str,
         port: int = 443,
-        hash_alg: hashes.HashingAlgorithm | None = None,
     ) -> Iterator[x509.Certificate]:
         """Generates a certificate chain from host to root certificate.
 
@@ -106,8 +99,6 @@ class AiaChaser:
         Yields:
             The certificates from the certificate chain, starting at host.
         """
-        hash_alg = hash_alg or hashes.SHA256()
-
         cert = self.fetch_host_cert(host=host, port=port)
         while True:
             cert_info = _extract_aia_info(cert)
@@ -276,21 +267,13 @@ def _download_certificate(url_string: str) -> x509.Certificate:
                 url_string=url_string,
             )
 
-        content_type = response.headers.get(HttpHeader.CONTENT_TYPE, "")
-        if content_type in X509_CERTIFICATE_MIME:
-            try:
-                return _try_parse_certificate(response.read())
-            except CertificateParseError as err:
-                raise CertificateDownloadError(
-                    message=str(err),
-                    url_string=url_string,
-                ) from None
-
-    raise CertificateDownloadError(
-        message=f"unknown Content-Type '{content_type}' for {url_string}",
-        url_string=url_string,
-        content_type=content_type,
-    )
+        try:
+            return _try_parse_certificate(response.read())
+        except CertificateParseError as err:
+            raise CertificateDownloadError(
+                message=str(err),
+                url_string=url_string,
+            ) from None
 
 
 def _try_parse_certificate(data: bytes) -> x509.Certificate:
@@ -299,7 +282,7 @@ def _try_parse_certificate(data: bytes) -> x509.Certificate:
     for parse_fn in parse_fns:
         try:
             return parse_fn(data)
-        except Exception as err:  # noqa: BLE001, PERF203
+        except (ValueError, TypeError) as err:  # noqa: PERF203
             exceptions.append(err)
 
     raise CertificateParseError(reasons=[str(err) for err in exceptions])
