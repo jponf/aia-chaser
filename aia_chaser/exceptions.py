@@ -7,6 +7,8 @@ if TYPE_CHECKING:
     import datetime
     from collections.abc import Sequence
 
+    from cryptography.x509.ocsp import OCSPResponseStatus
+
 
 class AiaChaserError(Exception):
     """Base exception for aia_chaser errors."""
@@ -44,6 +46,10 @@ class CertificateParseError(AiaChaserError):
         self.reasons = reasons
 
 
+class CertificateVerificationError(AiaChaserError):
+    """Base exception for certificate verification errors."""
+
+
 class CertificateChainError(AiaChaserError):
     """Error detected in a certificates chain of trust."""
 
@@ -63,7 +69,39 @@ class CertificateChainError(AiaChaserError):
         return CertificateChainError(f"certificate at index {index}: {reason}")
 
 
-class CertificateTimeError(AiaChaserError):
+class CertificateIssuerNameError(CertificateVerificationError):
+    """Certificate issuer name does not match issuer's subject."""
+
+    def __init__(self, cert_issuer: str, issuer_subject: str) -> None:
+        super().__init__(
+            f"certificate's issuer name ({cert_issuer}) does not"
+            f" match issuer's subject ({issuer_subject})",
+        )
+        self.cert_issuer = cert_issuer
+        self.issuer_subject = issuer_subject
+
+
+class CertificateKeyTypeError(CertificateVerificationError):
+    """Unsupported key type used to sign a certificate."""
+
+    def __init__(self, reason: str) -> None:
+        msg = "certificate does not provide a supported public key"
+        if reason:
+            msg += f" [{reason}]"
+
+        super().__init__(msg)
+
+
+class CertificateSignatureError(CertificateVerificationError):
+    """Issuer's certificate did not sign the certificate."""
+
+    def __init__(self, certificate: str, issuer: str) -> None:
+        super().__init__(f"issuer ({issuer}) did not sign certificate ({certificate})")
+        self.certificate_name = certificate
+        self.issuer_name = issuer
+
+
+class CertificateTimeError(CertificateVerificationError):
     """Certificate outside its validity period.
 
     Args:
@@ -89,7 +127,7 @@ class CertificateTimeError(AiaChaserError):
         self.verification_time = verification_time
 
 
-class CertificateTimeZoneError(AiaChaserError):
+class CertificateTimeZoneError(CertificateVerificationError):
     """Cannot compare offset-aware and offset-naive times."""
 
     def __init__(self, message: str | None = None) -> None:
@@ -100,7 +138,7 @@ class CertificateTimeZoneError(AiaChaserError):
         super().__init__(message)
 
 
-class RootCertificateNotFoundError(AiaChaserError):
+class RootCertificateNotFoundError(CertificateVerificationError):
     """Root certificate not in trusted database."""
 
     def __init__(self, subject: str) -> None:
@@ -109,7 +147,7 @@ class RootCertificateNotFoundError(AiaChaserError):
         )
 
 
-class CertificateFingerprintError(AiaChaserError):
+class CertificateFingerprintError(CertificateVerificationError):
     """Certificate fingerprint does not match trusted fingerprint."""
 
     def __init__(self, fingerprint: bytes, trusted_fingerprint: bytes) -> None:
@@ -119,3 +157,69 @@ class CertificateFingerprintError(AiaChaserError):
         )
         self.fingerprint = fingerprint
         self.trusted_fingerprint = trusted_fingerprint
+
+
+class OcspError(CertificateVerificationError):
+    """Base exception for OCSP errors."""
+
+
+class OcspRevokedStatusError(OcspError):
+    """OCSP response indicated that certificate has been revoked."""
+
+    def __init__(self, certificate: str) -> None:
+        super().__init__(f"OCSP status for {certificate} is REVOKED")
+
+
+class OcspUnknownStatusError(OcspError):
+    """OCSP response indicates that certificate validity is unknown."""
+
+    def __init__(self, certificate: str) -> None:
+        super().__init__(f"OCSP status for {certificate} is UNKNOWN")
+
+
+class OcspHttpError(OcspError):
+    """OCSP failed due to an HTTP protocol error."""
+
+    def __init__(self, ocsp_url: str, http_status: int) -> None:
+        super().__init__(
+            f"HTTP failed with status code {http_status} when "
+            f" requesting OCSP status to {ocsp_url}",
+        )
+        self.ocsp_url = ocsp_url
+        self.http_status = http_status
+
+
+class OcspResponseStatusError(OcspError):
+    """OCSP response status is not successful."""
+
+    def __init__(self, status: OCSPResponseStatus) -> None:
+        super().__init__(f"OCSP response status was {status}")
+        self.status = status
+
+
+class OcspResponseUnsignedError(OcspError):
+    """OCSP response is unsigned."""
+
+    def __init__(self) -> None:
+        super().__init__("OCSP response is unsigned this should not happen")
+
+
+class OcspResponseSignatureError(OcspError):
+    """OCSP responder certificate did not sign the response."""
+
+    def __init__(self, responder: str) -> None:
+        super().__init__(
+            f"responder's certificate {responder} did not sign the OCSP response",
+        )
+        self.responder = responder
+
+
+class OcspResponderCertificateError(OcspError):
+    """OCSP responder certificate not issued or signed by issuer."""
+
+    def __init__(
+        self,
+        reason: CertificateIssuerNameError | CertificateSignatureError,
+    ) -> None:
+        super().__init__(str(reason))
+        self.reason = reason
