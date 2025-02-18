@@ -112,9 +112,9 @@ def build_certificate_chains(
     """Builds all certificate chains found in `certificates`.
 
     First it looks for all leaf certificates using
-    [`find_leaf_certificates`][find_leaf_certificates] and then builds
-    the chains starting at each leaf using
-    [`build_certificate_chain`][build_certificate_chain].
+    [`find_leaf_certificates`][aia_chaser.utils.cert_utils.find_leaf_certificates]
+    and then builds the chains starting at each leaf using
+    [`build_certificate_chain`][aia_chaser.utils.cert_utils.build_certificate_chain].
 
     Returns:
         All certificate chains found in `certificates` each starting at
