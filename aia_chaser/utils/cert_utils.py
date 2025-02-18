@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import ssl
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
@@ -10,6 +11,8 @@ from cryptography.hazmat.primitives.serialization import Encoding
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from cryptography.hazmat.primitives import hashes
 
 
@@ -56,6 +59,79 @@ def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
             context.load_verify_locations(ca_file)
 
 
+def find_leaf_certificates(
+    certificates: Sequence[x509.Certificate],
+) -> list[x509.Certificate]:
+    """Finds leaf certificates.
+
+    A certificate is considered a leaf certificate if its subject
+    is not found as the issuer of another certificate from the list.
+
+    Returns:
+        List with the certificates that are not issuers of any of the
+        other provided certificates.
+    """
+    graph = collections.defaultdict(list)
+    for cert in certificates:
+        graph[cert.issuer].append(cert.subject)
+
+    return [
+        cert
+        for cert in certificates
+        if cert.subject not in graph or not graph[cert.subject]
+    ]
+
+
+def build_certificate_chain(
+    leaf_cert: x509.Certificate,
+    certs_map: Mapping[x509.Name, x509.Certificate],
+) -> list[x509.Certificate]:
+    """Builds a certificate chain from the `leaf_cert` to the root CA.
+
+    Args:
+        leaf_cert: Leaf certificate of the chain.
+        certs_map: Mapping from `x509.Certificate.subject` to `x509.Certificate`.
+
+    Returns:
+        A certificate chain starting at `leaf_cert` and ending in root CA.
+
+    Raises:
+        KeyError: An issuer is not found in `certs_map`.
+    """
+    chain = [leaf_cert]
+
+    while chain[-1].subject != chain[-1].issuer:
+        chain.append(certs_map[chain[-1].issuer])
+
+    return chain
+
+
+def build_certificate_chains(
+    certificates: Sequence[x509.Certificate],
+) -> list[list[x509.Certificate]]:
+    """Builds all certificate chains found in `certificates`.
+
+    First it looks for all leaf certificates using
+    [`find_leaf_certificates`][aia_chaser.utils.cert_utils.find_leaf_certificates]
+    and then builds the chains starting at each leaf using
+    [`build_certificate_chain`][aia_chaser.utils.cert_utils.build_certificate_chain].
+
+    Returns:
+        All certificate chains found in `certificates` each starting at
+        its corresponding leaf certificate.
+    """
+    leaves = find_leaf_certificates(certificates)
+    certs_map = {cert.subject: cert for cert in certificates}
+
+    return [
+        build_certificate_chain(
+            leaf_cert=leaf,
+            certs_map=certs_map,
+        )
+        for leaf in leaves
+    ]
+
+
 class AiaInformation(NamedTuple):
     """Authority Information Access (AIA) values."""
 
@@ -72,8 +148,7 @@ def extract_aia_information(
         certificate: Certificate from which extract AIA information.
 
     Returns:
-        The extracted CA issues and OCSP servers in an `AiaInformation`
-        instance.
+        The extracted CA issues and OCSP servers.
 
     Note:
         If the certificate does not have the AIA extension this function

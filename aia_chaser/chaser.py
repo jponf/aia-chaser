@@ -24,7 +24,7 @@ from aia_chaser.utils.cert_utils import (
     force_load_default_verify_certificates,
 )
 from aia_chaser.utils.url import extract_host_port_from_url
-from aia_chaser.verify import VerifyCertificatesConfig, verify_certificates_chain
+from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
@@ -79,8 +79,6 @@ class AiaChaser:
             host: Host to generate the certificate chain for.
             port: Port on host to connect and retrieve the initial
                 certificate.
-            hash_alg: Hashing algorithm used for operations like fingerprint
-                comparison, etc. Defaults: to SHA-256.
 
         Yields:
             The certificates from the certificate chain, starting at host.
@@ -129,6 +127,10 @@ class AiaChaser:
 
         Returns:
             The certificate of the (host, port) pair.
+
+        Raises:
+            MissingPeerCertificateError: If it is not possible to retrieve
+                the certificate of the `host`.
         """
         with contextlib.ExitStack() as ctx:
             sock = ctx.enter_context(socket.create_connection((host, port)))
@@ -172,11 +174,14 @@ class AiaChaser:
             The fetched certificate chain, optionally verified.
 
         Raises:
-            CertificateVerificationError: If the certificate chain fails verification.
+            exceptions.CertificateChainError: If the certificate chain fails
+                verification.
+            exceptions.MissingPeerCertificateError: If it is not possible to
+                retrieve the certificate of the `host`.
         """
         certificates = list(self.aia_chase(host, port))
         if verify:
-            verify_certificates_chain(
+            verify_certificate_chain(
                 certificates=certificates,
                 trusted=self._trusted,
                 config=verify_config or VerifyCertificatesConfig(),
@@ -193,7 +198,9 @@ class AiaChaser:
     ) -> list[x509.Certificate]:
         """Fetch the CA certificate chain for a given host.
 
-        Same as `fetch_cert_chain_for_host` excluding the host's certificate.
+        Same as
+        [`fetch_cert_chain_for_host`][aia_chaser.AiaChaser.fetch_cert_chain_for_host]
+        excluding the host's certificate.
 
         Args:
             host: The hostname to fetch the CA certificate chain for.
@@ -206,7 +213,10 @@ class AiaChaser:
             The fetched CA certificate chain (host excluded), optionally verified.
 
         Raises:
-            CertificateVerificationError: If the certificate chain fails verification.
+            exceptions.CertificateChainError: If the certificate chain fails
+                verification.
+            exceptions.MissingPeerCertificateError: If it is not possible to
+                retrieve the certificate of the `host`.
         """
         return self.fetch_cert_chain_for_host(
             host,
@@ -237,7 +247,10 @@ class AiaChaser:
             The fetched certificate chain, optionally verified.
 
         Raises:
-            CertificateVerificationError: If the certificate chain fails verification.
+            exceptions.CertificateChainError: If the certificate chain fails
+                verification.
+            exceptions.MissingPeerCertificateError: If it is not possible to
+                retrieve the certificate of the host.
         """
         host, port = extract_host_port_from_url(url_string)
         return self.fetch_cert_chain_for_host(
@@ -269,7 +282,10 @@ class AiaChaser:
             The fetched CA certificate chain, optionally verified.
 
         Raises:
-            CertificateVerificationError: If the certificate chain fails verification.
+            exceptions.CertificateChainError: If the certificate chain fails
+                verification.
+            exceptions.MissingPeerCertificateError: If it is not possible to
+                retrieve the certificate of the host.
         """
         return self.fetch_cert_chain_for_url(
             url_string=url_string,
