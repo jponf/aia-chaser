@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2025-02-18
+
+### 🚀 Features
+
+- Add OCSP verification and improve verify_certificate_chain interface
+- Remove content type validation as parsing will check it anyway
+- Support turning verification on/off and configuring its behavior
+
+### 🚜 Refactor
+
+- Extracted methods that can be used in other modules to a common file
+- Rename exceptions
+
+### 📚 Documentation
+
+- Add docs and improve pydocstrings
+- Add readthedocs configuration
+- Add logo and favicon
+- Moved development section to a separate file
+
+### 🧪 Testing
+
+- Increase number of URLs in test
+- Add expired and ocsp revoked tests
+
 ## [1.2.0] - 2025-02-13
 
 ### 🚀 Features
