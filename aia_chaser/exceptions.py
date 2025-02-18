@@ -50,25 +50,6 @@ class CertificateVerificationError(AiaChaserError):
     """Base exception for certificate verification errors."""
 
 
-class CertificateChainError(AiaChaserError):
-    """Error detected in a certificates chain of trust."""
-
-    @classmethod
-    def from_index_and_reason(cls, index: int, reason: str) -> CertificateChainError:
-        """Create exception from given arguments.
-
-        Args:
-            index: Index of the offending/failing certificate within
-                the chain.
-            reason: Description of the error.
-
-        Returns:
-            A CertificateChainError with a message constructed from
-            `index` and `reason`.
-        """
-        return CertificateChainError(f"certificate at index {index}: {reason}")
-
-
 class CertificateIssuerNameError(CertificateVerificationError):
     """Certificate issuer name does not match issuer's subject."""
 
@@ -101,7 +82,7 @@ class CertificateSignatureError(CertificateVerificationError):
         self.issuer_name = issuer
 
 
-class CertificateTimeError(CertificateVerificationError):
+class CertificateExpiredError(CertificateVerificationError):
     """Certificate outside its validity period.
 
     Args:
@@ -222,4 +203,16 @@ class OcspResponderCertificateError(OcspError):
         reason: CertificateIssuerNameError | CertificateSignatureError,
     ) -> None:
         super().__init__(str(reason))
+        self.reason = reason
+
+
+class CertificateChainError(AiaChaserError):
+    """Error detected in a certificates chain of trust."""
+
+    def __init__(
+        self,
+        index: int,
+        reason: CertificateVerificationError | OcspError,
+    ) -> None:
+        super().__init__(f"certificate at index {index}: {reason}")
         self.reason = reason
