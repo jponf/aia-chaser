@@ -19,8 +19,8 @@ nav:
 
 theme:
   name: material
-  # favicon: images/favicon.ico
-  # logo: images/logo.png
+  favicon: images/favicon.ico
+  logo: images/aia-chaser-circle.png
   # static_templates:
   #   - 404.html
   features:
