@@ -148,8 +148,7 @@ def extract_aia_information(
         certificate: Certificate from which extract AIA information.
 
     Returns:
-        The extracted CA issues and OCSP servers in an `AiaInformation`
-        instance.
+        The extracted CA issues and OCSP servers.
 
     Note:
         If the certificate does not have the AIA extension this function
