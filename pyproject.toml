@@ -78,6 +78,7 @@ optional = true
 [tool.poetry.group.docs.dependencies]
 markdown-include = "*"
 pymdown-extensions = "*"
+mkdocs = "^1.6.1"
 
 [tool.black]
 target-version = ["py36", "py37", "py38"]
