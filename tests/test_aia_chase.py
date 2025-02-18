@@ -1,6 +1,11 @@
 import pytest
 
-from aia_chaser import AiaChaser
+from aia_chaser import AiaChaser, VerifyCertificatesConfig
+from aia_chaser.exceptions import (
+    CertificateChainError,
+    CertificateExpiredError,
+    OcspRevokedStatusError,
+)
 
 
 @pytest.mark.parametrize(
@@ -40,7 +45,7 @@ from aia_chaser import AiaChaser
         "https://mossos.gencat.cat",
     ],
 )
-def test_aia_chase_url(url_string: str) -> None:
+def test_aia_chase_url_ok(url_string: str) -> None:
     chaser = AiaChaser()
     chain = chaser.fetch_cert_chain_for_url(url_string=url_string)
     # on Windows microsoft.com certificate is trusted resulting
@@ -63,3 +68,69 @@ def test_aia_chase_url_no_scheme(url_string: str) -> None:
     chaser = AiaChaser()
     with pytest.raises(ValueError):  # noqa: PT011
         chaser.fetch_ca_chain_for_url(url_string=url_string)
+
+
+EXPIRED_URLS = (
+    "https://expired.badssl.com/",
+    "https://expired-rsa-dv.ssl.com/",
+    "https://expired-rsa-ev.ssl.com/",
+    "https://expired-ecc-dv.ssl.com/",
+    "https://expired-ecc-ev.ssl.com/",
+)
+
+
+@pytest.mark.parametrize(
+    "url_string",
+    EXPIRED_URLS,
+)
+def test_aia_chase_url_expired(url_string: str) -> None:
+    chaser = AiaChaser()
+    with pytest.raises(CertificateChainError) as exc_info:
+        chaser.fetch_ca_chain_for_url(url_string=url_string)
+    assert type(exc_info.value.reason) is CertificateExpiredError
+
+
+@pytest.mark.parametrize(
+    "url_string",
+    EXPIRED_URLS,
+)
+def test_aia_chase_url_ignore_expired(url_string: str) -> None:
+    chaser = AiaChaser()
+    chain = chaser.fetch_ca_chain_for_url(url_string=url_string, verify=False)
+    assert len(chain) >= 1
+
+
+REVOKED_URLS = (
+    "https://revoked.badssl.com/",
+    "https://revoked.grc.com/",
+    "https://revoked-rsa-dv.ssl.com/",
+    "https://revoked-rsa-ev.ssl.com/",
+    "https://revoked-ecc-dv.ssl.com/",
+    "https://revoked-ecc-ev.ssl.com/",
+)
+
+
+@pytest.mark.parametrize(
+    "url_string",
+    REVOKED_URLS,
+)
+def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
+    chaser = AiaChaser()
+    with pytest.raises(CertificateChainError) as exc_info:
+        chaser.fetch_ca_chain_for_url(url_string=url_string)
+    assert type(exc_info.value.reason) is OcspRevokedStatusError
+
+
+@pytest.mark.parametrize(
+    "url_string",
+    REVOKED_URLS,
+)
+def test_aia_chase_url_ignore_ocsp_revoked(url_string: str) -> None:
+    chaser = AiaChaser()
+    chain = chaser.fetch_ca_chain_for_url(
+        url_string=url_string,
+        verify_config=VerifyCertificatesConfig(
+            ocsp_enabled=False,
+        ),
+    )
+    assert len(chain) >= 1
