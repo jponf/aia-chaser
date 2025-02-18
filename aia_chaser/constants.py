@@ -9,9 +9,14 @@ DEFAULT_URLOPEN_TIMEOUT = 30
 
 DEFAULT_SCHEME_PORT = MappingProxyType(
     {
+        "dns": 53,
         "ftp": 21,
         "http": 80,
         "https": 443,
+        "ipp": 631,
+        "nfs": 111,
+        "ssh": 22,
+        "telnet": 23,
     },
 )
 

@@ -6,7 +6,10 @@ from aia_chaser.constants import DEFAULT_SCHEME_PORT
 
 
 def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
-    """Extract host and port from a URL.
+    """Extract host and port from a URL string.
+
+    If the port is not explicitly specified it will be inferred from the
+    scheme.
 
     Args:
         url_string: URL from which to extract the host.

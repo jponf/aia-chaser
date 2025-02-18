@@ -10,11 +10,11 @@ from aia_chaser.exceptions import (
     CertificateTimeZoneError,
     RootCertificateNotFoundError,
 )
-from aia_chaser.verify import VerifyCertificatesConfig, verify_certificates_chain
+from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 def test_verify_chain_of_2_ok(host_and_ca: Sequence[x509.Certificate]) -> None:
-    verify_certificates_chain(host_and_ca)
+    verify_certificate_chain(host_and_ca)
 
 
 def test_verify_chain_of_2_wrong_subject(
@@ -24,7 +24,7 @@ def test_verify_chain_of_2_wrong_subject(
     # the issuer's subject will not match
     reversed_chain = reversed(host_and_ca)
     with pytest.raises(CertificateChainError):
-        verify_certificates_chain(reversed_chain)
+        verify_certificate_chain(reversed_chain)
 
 
 def test_verify_chain_of_2_wrong_validity_period(
@@ -35,7 +35,7 @@ def test_verify_chain_of_2_wrong_validity_period(
     ) - datetime.timedelta(days=1)
 
     with pytest.raises(CertificateChainError) as exc_info:
-        verify_certificates_chain(
+        verify_certificate_chain(
             host_and_ca,
             config=VerifyCertificatesConfig(
                 verification_time=verification_time,
@@ -50,7 +50,7 @@ def test_verify_chain_of_2_offset_naive_validation_time(
     verification_time = datetime.datetime.now()  # noqa: DTZ005
 
     with pytest.raises(CertificateChainError) as exc_info:
-        verify_certificates_chain(
+        verify_certificate_chain(
             host_and_ca,
             config=VerifyCertificatesConfig(
                 verification_time=verification_time,
@@ -63,7 +63,7 @@ def test_verify_chain_of_2_root_not_trusted(
     host_and_ca: Sequence[x509.Certificate],
 ) -> None:
     with pytest.raises(CertificateChainError) as exc_info:
-        verify_certificates_chain(host_and_ca, trusted={})
+        verify_certificate_chain(host_and_ca, trusted={})
     assert type(exc_info.value.reason) is RootCertificateNotFoundError
 
 
@@ -71,7 +71,7 @@ def test_verify_chain_of_2_root_trusted(
     host_and_ca: Sequence[x509.Certificate],
 ) -> None:
     root_ca = host_and_ca[-1]
-    verify_certificates_chain(
+    verify_certificate_chain(
         host_and_ca,
         trusted={root_ca.subject.rfc4514_string(): root_ca},
     )
