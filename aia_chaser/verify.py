@@ -18,12 +18,13 @@ from cryptography.x509 import ocsp
 
 from aia_chaser.exceptions import (
     CertificateChainError,
+    CertificateExpiredError,
     CertificateFingerprintError,
     CertificateIssuerNameError,
     CertificateKeyTypeError,
     CertificateSignatureError,
-    CertificateTimeError,
     CertificateTimeZoneError,
+    CertificateVerificationError,
     OcspError,
     OcspHttpError,
     OcspResponderCertificateError,
@@ -95,8 +96,8 @@ def verify_certificates_chain(
         certificates: Chain of certificates starting with the leaf and
             ending in the root CA certificate.
         trusted: Trusted certificates mapping from subject, formatted as
-            rfc4514, to certificate. If not provided or empty root
-            certificate verification will be skipped.
+            rfc4514, to certificate. If not provided root certificate
+            verification will be skipped.
         config: Configuration of the verification process.
 
     Raise:
@@ -131,29 +132,15 @@ def verify_certificates_chain(
 
             chain_index += 1
 
-        if trusted:
+        if trusted is not None:
             verify_root_certificate(
                 root_cert,
                 hash_alg=config.fingerprint_hash_alg,
                 trusted=trusted,
                 verification_time=config.verification_time,
             )
-    except (
-        CertificateIssuerNameError,
-        CertificateSignatureError,
-        CertificateTimeZoneError,
-        CertificateTimeError,
-        RootCertificateNotFoundError,
-    ) as err:
-        raise CertificateChainError.from_index_and_reason(
-            index=chain_index,
-            reason=str(err),
-        ) from err
-    except TypeError as err:
-        raise CertificateChainError.from_index_and_reason(
-            index=chain_index,
-            reason=f"certificate does not provide a supported public key [{err}]",
-        ) from err
+    except (CertificateVerificationError, OcspError) as err:
+        raise CertificateChainError(index=chain_index, reason=err) from err
 
 
 def verify_directly_issued_by(
@@ -267,7 +254,7 @@ def verify_certificate_validity_period(
     not_valid_after = _get_not_valid_after(certificate)
 
     if not not_valid_before <= verification_time <= not_valid_after:
-        raise CertificateTimeError(
+        raise CertificateExpiredError(
             not_valid_before=not_valid_before,
             not_valid_after=not_valid_after,
             verification_time=verification_time,
