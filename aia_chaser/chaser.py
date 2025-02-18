@@ -6,27 +6,25 @@ import http
 import socket
 import ssl
 import warnings
-from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
-from cryptography.hazmat.primitives.serialization import Encoding
 
-from aia_chaser.constants import (
-    DEFAULT_URLOPEN_TIMEOUT,
-    DOWNLOAD_CACHE_SIZE,
-    X509_CERTIFICATE_MIME,
-    HttpHeader,
-)
+from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
 from aia_chaser.exceptions import (
     CertificateDownloadError,
     CertificateParseError,
     MissingPeerCertificateError,
-    RootCertificateNotTrustedError,
+    RootCertificateNotFoundError,
+)
+from aia_chaser.utils.cert_utils import (
+    certificates_to_der,
+    extract_aia_information,
+    force_load_default_verify_certificates,
 )
 from aia_chaser.utils.url import extract_host_port_from_url
-from aia_chaser.verify import verify_certificates_chain
+from aia_chaser.verify import VerifyCertificatesConfig, verify_certificates_chain
 
 
 if TYPE_CHECKING:
@@ -34,20 +32,6 @@ if TYPE_CHECKING:
 
 
 __all__ = ["AiaChaser"]
-
-
-class CertificatesChain(list[x509.Certificate]):
-    """Specialized list for x509 certificates."""
-
-    def to_der(self) -> bytes:
-        """DER representation of the certificates chain."""
-        return b"".join(cert.public_bytes(Encoding.DER) for cert in self)
-
-    def to_pem(self) -> str:
-        """PEM representation of the certificates chain."""
-        return "\n".join(
-            cert.public_bytes(Encoding.PEM).decode("ascii") for cert in self
-        )
 
 
 class AiaChaser:
@@ -74,7 +58,7 @@ class AiaChaser:
     def __init__(self, context: ssl.SSLContext | None = None) -> None:
         self._context = context or ssl.SSLContext()
         if not context:
-            _load_default_certificates(self._context)
+            force_load_default_verify_certificates(self._context)
 
         # Load trusted certificates
         trusted_der = list(self._context.get_ca_certs(True))  # noqa: FBT003
@@ -84,13 +68,19 @@ class AiaChaser:
             ca_cert.subject.rfc4514_string(): ca_cert for ca_cert in trusted_cert
         }
 
-    def aia_chase(self, host: str, port: int = 443) -> Iterator[x509.Certificate]:
+    def aia_chase(
+        self,
+        host: str,
+        port: int = 443,
+    ) -> Iterator[x509.Certificate]:
         """Generates a certificate chain from host to root certificate.
 
         Args:
             host: Host to generate the certificate chain for.
             port: Port on host to connect and retrieve the initial
                 certificate.
+            hash_alg: Hashing algorithm used for operations like fingerprint
+                comparison, etc. Defaults: to SHA-256.
 
         Yields:
             The certificates from the certificate chain, starting at host.
@@ -113,7 +103,7 @@ class AiaChaser:
                 break
             if cert_info.subject == cert_info.issuer:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotTrustedError(subject=cert_info.issuer)
+                    raise RootCertificateNotFoundError(subject=cert_info.issuer)
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -123,7 +113,7 @@ class AiaChaser:
             # No more intermediate CAs, issuer must be trusted
             if not cert_info.aia_ca_issuers:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotTrustedError(subject=cert_info.issuer)
+                    raise RootCertificateNotFoundError(subject=cert_info.issuer)
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -158,65 +148,181 @@ class AiaChaser:
 
         raise MissingPeerCertificateError(host=host, port=port)
 
+    def fetch_cert_chain_for_host(
+        self,
+        host: str,
+        port: int = 443,
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
+    ) -> list[x509.Certificate]:
+        """Fetch the certificate chain for a given host.
+
+        Retrieves the certificate chain for a specified host and port.
+        Optionally verifies the chain against a trusted certificate store.
+
+        Args:
+            host: The hostname to fetch the certificate chain for.
+            port: The port to connect to. Defaults to 443.
+            verify_config: Configuration for verifying the certificate chain.
+                If None, a default configuration is used.
+            verify: Whether to verify the certificate chain. Defaults to True.
+
+        Returns:
+            The fetched certificate chain, optionally verified.
+
+        Raises:
+            CertificateVerificationError: If the certificate chain fails verification.
+        """
+        certificates = list(self.aia_chase(host, port))
+        if verify:
+            verify_certificates_chain(
+                certificates=certificates,
+                trusted=self._trusted,
+                config=verify_config or VerifyCertificatesConfig(),
+            )
+        return certificates
+
     def fetch_ca_chain_for_host(
         self,
         host: str,
         port: int = 443,
-    ) -> CertificatesChain:
-        """Get the CA certification chain excluding the leaf node.
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
+    ) -> list[x509.Certificate]:
+        """Fetch the CA certificate chain for a given host.
+
+        Same as `fetch_cert_chain_for_host` excluding the host's certificate.
 
         Args:
-            host: Host (leaf node) to get the CA certification chain for.
-            port: Port on host to connect and retrieve the initial
-                certificate.
+            host: The hostname to fetch the CA certificate chain for.
+            port: The port to connect to. Defaults to 443.
+            verify_config: Configuration for verifying the certificate chain.
+                If None, a default configuration is used.
+            verify: Whether to verify the CA certificate chain. Defaults to True.
 
         Returns:
-            List of CA certificates that verify host's certificate.
+            The fetched CA certificate chain (host excluded), optionally verified.
+
+        Raises:
+            CertificateVerificationError: If the certificate chain fails verification.
         """
-        certificates = list(self.aia_chase(host, port))[1:]
-        verify_certificates_chain(
-            certificates=certificates,
-            trusted=self._trusted,
+        return self.fetch_cert_chain_for_host(
+            host,
+            port,
+            verify_config=verify_config,
+            verify=verify,
+        )[:1]
+
+    def fetch_cert_chain_for_url(
+        self,
+        url_string: str,
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
+    ) -> list[x509.Certificate]:
+        """Fetch the certificate chain for a given host.
+
+        Same as `fetch_cert_chain_for_host` but the host name and port
+        are obtained from the `url_string`
+
+        Args:
+            url_string: URL to fetch the certificate chain for.
+            verify_config: Configuration for verifying the certificate chain.
+                If None, a default configuration is used.
+            verify: Whether to verify the certificate chain. Defaults to True.
+
+        Returns:
+            The fetched certificate chain, optionally verified.
+
+        Raises:
+            CertificateVerificationError: If the certificate chain fails verification.
+        """
+        host, port = extract_host_port_from_url(url_string)
+        return self.fetch_cert_chain_for_host(
+            host=host,
+            port=port,
+            verify_config=verify_config,
+            verify=verify,
         )
-        return CertificatesChain(certificates)
 
     def fetch_ca_chain_for_url(
         self,
         url_string: str,
-    ) -> CertificatesChain:
-        """Get the CA certification chain excluding the leaf node.
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
+    ) -> list[x509.Certificate]:
+        """Fetch the CA certificate chain for a given host.
 
-        Same as `get_ca_chain_for_host` but the host name is obtained
-        from `url_string`.
+        Same as `fetch_cert_chain_for_url` excluding the host's
+        certificate.
 
         Args:
-            url_string: URL for which to get the CA certification chain.
+            url_string: URL to fetch the CA certificate chain for.
+            verify_config: Configuration for verifying the certificate chain.
+                If None, a default configuration is used.
+            verify: Whether to verify the CA certificate chain. Defaults to True.
 
         Returns:
-            List of CA certificates that verify the URL's host certificate.
+            The fetched CA certificate chain, optionally verified.
+
+        Raises:
+            CertificateVerificationError: If the certificate chain fails verification.
         """
-        host, port = extract_host_port_from_url(url_string)
-        return self.fetch_ca_chain_for_host(host=host, port=port)
+        return self.fetch_cert_chain_for_url(
+            url_string=url_string,
+            verify_config=verify_config,
+            verify=verify,
+        )[:1]
 
     def make_ssl_context_for_host(
         self,
         host: str,
         port: int = 443,
         purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH,
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
     ) -> ssl.SSLContext:
-        """Create a new SSL context and add certificates chain for host."""
+        """Create a new SSL context and add certificate chain for host.
+
+        See Also:
+            fetch_ca_chain_for_host: Method used to retrieve and optionally
+                verify the CA chain to add to the SSL context.
+        """
         context = ssl.create_default_context(purpose=purpose)
-        self.add_host_ca_chain_to_context(context, host, port)
+        self.add_host_ca_chain_to_context(
+            context,
+            host,
+            port,
+            verify_config=verify_config,
+            verify=verify,
+        )
         return context
 
     def make_ssl_context_for_url(
         self,
         url_string: str,
         purpose: ssl.Purpose = ssl.Purpose.SERVER_AUTH,
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
     ) -> ssl.SSLContext:
-        """Create a new SSL context and add certificates chain for URL."""
+        """Create a new SSL context and add certificate chain for URL.
+
+        See Also:
+            fetch_ca_chain_for_url: Method used to retrieve and optionally
+                verify the CA chain to add to the SSL context.
+        """
         context = ssl.create_default_context(purpose=purpose)
-        self.add_url_ca_chain_to_context(context, url_string=url_string)
+        self.add_url_ca_chain_to_context(
+            context,
+            url_string=url_string,
+            verify_config=verify_config,
+            verify=verify,
+        )
         return context
 
     def add_host_ca_chain_to_context(
@@ -224,19 +330,44 @@ class AiaChaser:
         context: ssl.SSLContext,
         host: str,
         port: int = 443,
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
     ) -> None:
-        """Add host CA chain to SSL context."""
-        certificates = self.fetch_ca_chain_for_host(host, port)
-        context.load_verify_locations(cadata=certificates.to_der())
+        """Add host CA chain to SSL context.
+
+        See Also:
+            fetch_ca_chain_for_host: Method used to retrieve and optionally
+                verify the CA chain to add to the SSL context.
+        """
+        certificates = self.fetch_ca_chain_for_host(
+            host,
+            port,
+            verify_config=verify_config,
+            verify=verify,
+        )
+        context.load_verify_locations(cadata=certificates_to_der(certificates))
 
     def add_url_ca_chain_to_context(
         self,
         context: ssl.SSLContext,
         url_string: str,
+        verify_config: VerifyCertificatesConfig | None = None,
+        *,
+        verify: bool = True,
     ) -> None:
-        """Add CA chain to URL's host to SSL context."""
-        certificates = self.fetch_ca_chain_for_url(url_string)
-        context.load_verify_locations(cadata=certificates.to_der())
+        """Add CA chain to URL's host to SSL context.
+
+        See Also:
+            fetch_ca_chain_for_host: Method used to retrieve and optionally
+                verify the CA chain to add to the SSL context.
+        """
+        certificates = self.fetch_ca_chain_for_url(
+            url_string,
+            verify_config=verify_config,
+            verify=verify,
+        )
+        context.load_verify_locations(cadata=certificates_to_der(certificates))
 
 
 @functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
@@ -263,21 +394,13 @@ def _download_certificate(url_string: str) -> x509.Certificate:
                 url_string=url_string,
             )
 
-        content_type = response.headers.get(HttpHeader.CONTENT_TYPE, "")
-        if content_type in X509_CERTIFICATE_MIME:
-            try:
-                return _try_parse_certificate(response.read())
-            except CertificateParseError as err:
-                raise CertificateDownloadError(
-                    message=str(err),
-                    url_string=url_string,
-                ) from None
-
-    raise CertificateDownloadError(
-        message=f"unknown Content-Type '{content_type}' for {url_string}",
-        url_string=url_string,
-        content_type=content_type,
-    )
+        try:
+            return _try_parse_certificate(response.read())
+        except CertificateParseError as err:
+            raise CertificateDownloadError(
+                message=str(err),
+                url_string=url_string,
+            ) from None
 
 
 def _try_parse_certificate(data: bytes) -> x509.Certificate:
@@ -286,7 +409,7 @@ def _try_parse_certificate(data: bytes) -> x509.Certificate:
     for parse_fn in parse_fns:
         try:
             return parse_fn(data)
-        except Exception as err:  # noqa: BLE001, PERF203
+        except (ValueError, TypeError) as err:  # noqa: PERF203
             exceptions.append(err)
 
     raise CertificateParseError(reasons=[str(err) for err in exceptions])
@@ -298,68 +421,14 @@ class _CertificateAiaInfo(NamedTuple):
     subject: str
     issuer: str
     aia_ca_issuers: list[str]
-    aia_ocsp_servers: list[str]
-
-
-def _extract_aia_information(
-    x509_certificate: x509.Certificate,
-) -> tuple[list[str], list[str]]:
-    try:
-        aia_extension = cast(
-            x509.Extension[x509.AuthorityInformationAccess],
-            x509_certificate.extensions.get_extension_for_oid(
-                x509.ExtensionOID.AUTHORITY_INFORMATION_ACCESS,
-            ),
-        )
-    except x509.ExtensionNotFound:
-        return [], []
-
-    ca_issuers = [
-        aia_entry.access_location.value
-        for aia_entry in aia_extension.value
-        if aia_entry.access_method == x509.AuthorityInformationAccessOID.CA_ISSUERS
-    ]
-    ocsp_servers = [
-        aia_entry.access_location.value
-        for aia_entry in aia_extension.value
-        if aia_entry.access_method == x509.AuthorityInformationAccessOID.OCSP
-    ]
-
-    return ca_issuers, ocsp_servers
+    aia_ocsp_urls: list[str]
 
 
 def _extract_aia_info(x509_certificate: x509.Certificate) -> _CertificateAiaInfo:
-    ca_issuers, ocsp_servers = _extract_aia_information(x509_certificate)
+    aia_info = extract_aia_information(x509_certificate)
     return _CertificateAiaInfo(
         subject=x509_certificate.subject.rfc4514_string(),
         issuer=x509_certificate.issuer.rfc4514_string(),
-        aia_ca_issuers=ca_issuers,
-        aia_ocsp_servers=ocsp_servers,
+        aia_ca_issuers=aia_info.ca_issuers,
+        aia_ocsp_urls=aia_info.ocsp_urls,
     )
-
-
-def _load_default_certificates(context: ssl.SSLContext) -> None:
-    # Expected way to load default certificates
-    context.load_default_certs(purpose=ssl.Purpose.SERVER_AUTH)
-
-    # Note:
-    # Certificates in a capath directory aren't loaded unless they have
-    # been used at least once.
-    #
-    # To avoid an empty list of trusted certificates when a cafile does
-    # not exist and also to avoid missing certificates that only exist
-    # in capath, let's forcefully load them (this solution may not work
-    # on Windows):
-    ssl_defaults = ssl.get_default_verify_paths()
-
-    if ssl_defaults.capath is not None:
-        ca_files = filter(
-            lambda ca_file: ca_file.is_file() and not ca_file.name.startswith("."),
-            Path(ssl_defaults.capath).iterdir(),
-        )
-        # Note: We found that some ssl installations have files that
-        # are not cert, i.e., homebrew openssl has a .keepme. For now
-        # we ignore files that start with '.' but a try except might
-        # be necessary ¯\_(ツ)_/¯
-        for ca_file in ca_files:
-            context.load_verify_locations(ca_file)

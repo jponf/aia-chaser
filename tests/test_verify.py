@@ -6,11 +6,11 @@ from cryptography import x509
 
 from aia_chaser.exceptions import (
     CertificateChainError,
-    CertificateTimeError,
+    CertificateExpiredError,
     CertificateTimeZoneError,
-    RootCertificateNotTrustedError,
+    RootCertificateNotFoundError,
 )
-from aia_chaser.verify import verify_certificates_chain
+from aia_chaser.verify import VerifyCertificatesConfig, verify_certificates_chain
 
 
 def test_verify_chain_of_2_ok(host_and_ca: Sequence[x509.Certificate]) -> None:
@@ -37,9 +37,11 @@ def test_verify_chain_of_2_wrong_validity_period(
     with pytest.raises(CertificateChainError) as exc_info:
         verify_certificates_chain(
             host_and_ca,
-            verification_time=verification_time,
+            config=VerifyCertificatesConfig(
+                verification_time=verification_time,
+            ),
         )
-    assert type(exc_info.value.__cause__) is CertificateTimeError
+    assert type(exc_info.value.__cause__) is CertificateExpiredError
 
 
 def test_verify_chain_of_2_offset_naive_validation_time(
@@ -50,9 +52,11 @@ def test_verify_chain_of_2_offset_naive_validation_time(
     with pytest.raises(CertificateChainError) as exc_info:
         verify_certificates_chain(
             host_and_ca,
-            verification_time=verification_time,
+            config=VerifyCertificatesConfig(
+                verification_time=verification_time,
+            ),
         )
-    assert type(exc_info.value.__cause__) is CertificateTimeZoneError
+    assert type(exc_info.value.reason) is CertificateTimeZoneError
 
 
 def test_verify_chain_of_2_root_not_trusted(
@@ -60,7 +64,7 @@ def test_verify_chain_of_2_root_not_trusted(
 ) -> None:
     with pytest.raises(CertificateChainError) as exc_info:
         verify_certificates_chain(host_and_ca, trusted={})
-    assert type(exc_info.value.__cause__) is RootCertificateNotTrustedError
+    assert type(exc_info.value.reason) is RootCertificateNotFoundError
 
 
 def test_verify_chain_of_2_root_trusted(
