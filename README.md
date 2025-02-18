@@ -7,6 +7,15 @@
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
+[
+![PyPI - Version](https://img.shields.io/pypi/v/aia-chaser)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/aia-chaser)
+](https://pypi.org/project/aia-chaser/)
+
+[![Read the Docs](https://img.shields.io/readthedocs/aia-chaser)](https://aia-chaser.readthedocs.io)
+
+
+
 This package provides authority information access (AIA) chasing
 from a host/leaf certificate to complete its chain of trust and
 generate an SSL context to establish a secure connection.

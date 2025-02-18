@@ -56,15 +56,18 @@ class VerifyCertificatesConfig:
     Attributes:
         fingerprint_hash_alg: Hash algorithm used to verify that the
             root certificate from the chain is the same as the one
-            found in the trusted certificates.
+            found in the trusted certificates. Defaults to `hashes.SHA256`.
 
         ocsp_enabled: Whether or not perform OCSP validation.
+            Defaults to True.
         ocsp_hash_alg: Hash algorithm used to construct OCSP requests.
+            Defaults to `hashes.SHA1`.
         ocsp_ignore_unknown: Whether to ignore OCSP's status UNKNOWN or
             consider it a verification error.
+            Defaults to True.
 
         verification_time: Timestamp used to verify certificate validity
-            period. Defaults to system's time.
+            period. Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
     """
 
     fingerprint_hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -82,7 +85,7 @@ class VerifyCertificatesConfig:
     )
 
 
-def verify_certificates_chain(
+def verify_certificate_chain(
     certificates: Iterable[x509.Certificate],
     trusted: Mapping[str, x509.Certificate] | None = None,
     config: VerifyCertificatesConfig | None = None,
@@ -100,7 +103,7 @@ def verify_certificates_chain(
             verification will be skipped.
         config: Configuration of the verification process.
 
-    Raise:
+    Raises:
         CertificateChainError: If a verification error is detected on
             any of the certificates from the chain. It will also
             be raised if trusted is given `certificate[-1]` is not
@@ -162,7 +165,7 @@ def verify_directly_issued_by(
     Raises:
         CertificateIssuerNameError: If the issuer's subject name does not match
             the certificate's issuer name.
-        CertificateIssuerSignatureError: If the issuer's signature on the certificate
+        CertificateSignatureError: If the issuer's signature on the certificate
             is invalid.
     """
     try:
@@ -192,11 +195,12 @@ def verify_root_certificate(
     Args:
         root_cert: Certificate to verify.
         verification_time: datetime value to validate the certificates
-            validity period. If not given uses UTC time.
+            validity period.
+            Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
         trusted: Trusted certificates mapping from subject, formatted as
             rfc4514, to certificate.
         hash_alg: Hashing algorithm used for operations like fingerprint
-            comparison, etc. Defaults: to SHA-256.
+            comparison, etc. Defaults to SHA-256.
 
     Raises:
         RootCertificateNotFoundError: If the root certificate cannot
@@ -241,7 +245,7 @@ def verify_certificate_validity_period(
             verifying the validity period. If not given uses UTC time.
 
     Raises:
-        CertificateTimeError: If the certificate is outside its validity
+        CertificateExpiredError: If the certificate is outside its validity
             period.
         CertificateTimeZoneError: If `verification_time` is offset-naive.
     """
@@ -288,10 +292,20 @@ def verify_ocsp_status(
 
     Raises:
         OcspRevokedStatusError:
-            If the certificate status is `REVOKED` in the OCSP response.
+            The certificate status is `REVOKED` in the OCSP response.
         OcspUnknownStatusError:
-            If the certificate status is `UNKNOWN` in the OCSP response
+            The certificate status is `UNKNOWN` in the OCSP response
             and `ignore_unknown` is False.
+        OcspHttpError:
+            An HTTP error happened while requesting the OCSP status.
+        OcspResponseStatusError:
+            The OCSP response status is not `SUCCESSFUL`.
+        OcspResponseUnsignedError:
+            The OCSP response is not signed.
+        OcspResponseSignatureError:
+            The OCSP response is not signed by the responder certificate.
+        CertificateKeyTypeError:
+            The responder certificate key is not supported.
 
     Warnings:
         UserWarning:

@@ -71,6 +71,7 @@ gen-req:  ## Generate requirements files from poetry
 	poetry export -f requirements.txt --without-hashes > requirements.txt
 	poetry export -f requirements.txt --without-hashes --with dev > requirements-dev.txt
 	poetry export -f requirements.txt --without-hashes --with test > requirements-test.txt
+	poetry export -f requirements.txt --without-hashes --with docs > requirements-docs.txt
 	@ poetry run scripts/req_fixer requirements.txt requirements-dev.txt requirements-test.txt
 
 

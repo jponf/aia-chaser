@@ -1,0 +1,87 @@
+site_name: aia-chaser
+site_description: >
+  Authority information access (AIA) chasing from a host/leaf certificate
+  to complete its chain of trust and generate an SSL context.
+site_author: Josep Pon Farreny
+repo_url: https://github.com/jponf/aia-chaser
+#edit_uri: https://__REPO_URI__/__BRANCH__/docs
+
+nav:
+  - Home:
+      - Overview: index.md
+      - Changelog: changelog.md
+  - Development: development.md
+  - API Reference:
+      - AIA Chaser: references/chaser.md
+      - Exceptions: references/exceptions.md
+      - Certificate Verification: references/verify.md
+      - Utilities: references/utils.md
+
+theme:
+  name: material
+  favicon: images/favicon.ico
+  logo: images/aia-chaser-circle.png
+  # static_templates:
+  #   - 404.html
+  features:
+    # - navigation.tabs
+    # - toc.integrate
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+  hljs_languages:
+    - yaml
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - smarty
+  - extra
+  - admonition
+  - codehilite
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji
+  - pymdownx.keys
+  - pymdownx.magiclink
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tabbed
+  - markdown_include.include:
+      base_path: .
+
+plugins:
+  - autorefs
+  # - gen-files:
+  #     scripts:
+  #       - scripts/gen_ref_pages.py
+  # - literate-nav
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            docstring_section_style: spacy
+            show_source: false
+  - search
