@@ -12,6 +12,9 @@
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/aia-chaser)
 ](https://pypi.org/project/aia-chaser/)
 
+[![Read the Docs](https://img.shields.io/readthedocs/aia-chaser)](https://aia-chaser.readthedocs.io)
+
+
 
 This package provides authority information access (AIA) chasing
 from a host/leaf certificate to complete its chain of trust and
