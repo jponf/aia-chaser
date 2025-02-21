@@ -73,5 +73,5 @@ def test_verify_chain_of_2_root_trusted(
     root_ca = host_and_ca[-1]
     verify_certificate_chain(
         host_and_ca,
-        trusted={root_ca.subject.rfc4514_string(): root_ca},
+        trusted={root_ca.subject: root_ca},
     )

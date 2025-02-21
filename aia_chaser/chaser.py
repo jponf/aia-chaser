@@ -64,9 +64,7 @@ class AiaChaser:
         trusted_der = list(self._context.get_ca_certs(True))  # noqa: FBT003
         trusted_cert = list(map(x509.load_der_x509_certificate, trusted_der))
 
-        self._trusted = {
-            ca_cert.subject.rfc4514_string(): ca_cert for ca_cert in trusted_cert
-        }
+        self._trusted = {ca_cert.subject: ca_cert for ca_cert in trusted_cert}
 
     def aia_chase(
         self,
@@ -101,7 +99,9 @@ class AiaChaser:
                 break
             if cert_info.subject == cert_info.issuer:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotFoundError(subject=cert_info.issuer)
+                    raise RootCertificateNotFoundError(
+                        subject=cert_info.issuer.rfc4514_string(),
+                    )
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -111,7 +111,9 @@ class AiaChaser:
             # No more intermediate CAs, issuer must be trusted
             if not cert_info.aia_ca_issuers:
                 if cert_info.issuer not in self._trusted:
-                    raise RootCertificateNotFoundError(subject=cert_info.issuer)
+                    raise RootCertificateNotFoundError(
+                        subject=cert_info.issuer.rfc4514_string(),
+                    )
                 yield self._trusted[cert_info.issuer]
                 break
 
@@ -434,8 +436,8 @@ def _try_parse_certificate(data: bytes) -> x509.Certificate:
 class _CertificateAiaInfo(NamedTuple):
     """Simpler format to work with  certificate info."""
 
-    subject: str
-    issuer: str
+    subject: x509.Name
+    issuer: x509.Name
     aia_ca_issuers: list[str]
     aia_ocsp_urls: list[str]
 
@@ -443,8 +445,8 @@ class _CertificateAiaInfo(NamedTuple):
 def _extract_aia_info(x509_certificate: x509.Certificate) -> _CertificateAiaInfo:
     aia_info = extract_aia_information(x509_certificate)
     return _CertificateAiaInfo(
-        subject=x509_certificate.subject.rfc4514_string(),
-        issuer=x509_certificate.issuer.rfc4514_string(),
+        subject=x509_certificate.subject,
+        issuer=x509_certificate.issuer,
         aia_ca_issuers=aia_info.ca_issuers,
         aia_ocsp_urls=aia_info.ocsp_urls,
     )
