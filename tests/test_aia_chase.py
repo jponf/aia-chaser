@@ -47,7 +47,12 @@ from aia_chaser.exceptions import (
 )
 def test_aia_chase_url_ok(url_string: str) -> None:
     chaser = AiaChaser()
-    chain = chaser.fetch_cert_chain_for_url(url_string=url_string)
+    chain = chaser.fetch_cert_chain_for_url(
+        url_string=url_string,
+        verify_config=VerifyCertificatesConfig(
+            ocsp_enabled=True,
+        ),
+    )
     # on Windows microsoft.com certificate is trusted resulting
     # in a chain of length 1 ¯\_(ツ)_/¯
     assert len(chain) >= 1
@@ -117,7 +122,12 @@ REVOKED_URLS = (
 def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
     chaser = AiaChaser()
     with pytest.raises(CertificateChainError) as exc_info:
-        chaser.fetch_ca_chain_for_url(url_string=url_string)
+        chaser.fetch_ca_chain_for_url(
+            url_string=url_string,
+            verify_config=VerifyCertificatesConfig(
+                ocsp_enabled=True,
+            ),
+        )
     assert type(exc_info.value.reason) is OcspRevokedStatusError
 
 

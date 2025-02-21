@@ -82,6 +82,16 @@ class CertificateSignatureError(CertificateVerificationError):
         self.issuer_name = issuer
 
 
+class CertificateIssuerNotTrustedError(CertificateVerificationError):
+    """Issuer's certificate cannot be used to verify signature."""
+
+    def __init__(self, issuer: str) -> None:
+        super().__init__(
+            f"issuer ({issuer}) not found among the trusted certificates",
+        )
+        self.issuer_name = issuer
+
+
 class CertificateExpiredError(CertificateVerificationError):
     """Certificate outside its validity period.
 
@@ -200,9 +210,13 @@ class OcspResponderCertificateError(OcspError):
 
     def __init__(
         self,
-        reason: CertificateIssuerNameError | CertificateSignatureError,
+        reason: (
+            CertificateIssuerNameError
+            | CertificateIssuerNotTrustedError
+            | CertificateSignatureError
+        ),
     ) -> None:
-        super().__init__(str(reason))
+        super().__init__(f"OCSP certificate error: {reason}")
         self.reason = reason
 
 

@@ -21,6 +21,7 @@ from aia_chaser.exceptions import (
     CertificateExpiredError,
     CertificateFingerprintError,
     CertificateIssuerNameError,
+    CertificateIssuerNotTrustedError,
     CertificateKeyTypeError,
     CertificateSignatureError,
     CertificateTimeZoneError,
@@ -65,6 +66,10 @@ class VerifyCertificatesConfig:
         ocsp_ignore_unknown: Whether to ignore OCSP's status UNKNOWN or
             consider it a verification error.
             Defaults to True.
+        ocsp_verify_responder: Whether to verify responder certificate. See
+            [`VerifyOcspConfig`][aia_chaser.verify.VerifyOcspConfig] for more
+            details.
+
 
         verification_time: Timestamp used to verify certificate validity
             period. Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
@@ -74,11 +79,12 @@ class VerifyCertificatesConfig:
         default_factory=hashes.SHA256,
     )
 
-    ocsp_enabled: bool = True
+    ocsp_enabled: bool = False
     ocsp_hash_alg: hashes.HashAlgorithm = dataclasses.field(
         default_factory=hashes.SHA1,
     )
     ocsp_ignore_unknown: bool = True
+    ocsp_verify_responder: bool = True
 
     verification_time: datetime.datetime = dataclasses.field(
         default_factory=_get_default_verification_time,
@@ -87,7 +93,7 @@ class VerifyCertificatesConfig:
 
 def verify_certificate_chain(
     certificates: Iterable[x509.Certificate],
-    trusted: Mapping[str, x509.Certificate] | None = None,
+    trusted: Mapping[x509.Name, x509.Certificate] | None = None,
     config: VerifyCertificatesConfig | None = None,
 ) -> None:
     """Verifies the integrity of the certificates chain.
@@ -129,8 +135,12 @@ def verify_certificate_chain(
                 verify_ocsp_status(
                     certificate=issued,
                     issuer=issuer,
-                    hash_alg=config.ocsp_hash_alg,
-                    ignore_unknown=config.ocsp_ignore_unknown,
+                    config=VerifyOcspConfig(
+                        hash_alg=config.ocsp_hash_alg,
+                        ignore_unknown=config.ocsp_ignore_unknown,
+                        verify_responder=config.ocsp_verify_responder,
+                        trusted=trusted or {},
+                    ),
                 )
 
             chain_index += 1
@@ -186,7 +196,7 @@ def verify_directly_issued_by(
 
 def verify_root_certificate(
     root_cert: x509.Certificate,
-    trusted: Mapping[str, x509.Certificate],
+    trusted: Mapping[x509.Name, x509.Certificate],
     verification_time: datetime.datetime | None = None,
     hash_alg: hashes.HashAlgorithm | None = None,
 ) -> None:
@@ -197,8 +207,8 @@ def verify_root_certificate(
         verification_time: datetime value to validate the certificates
             validity period.
             Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
-        trusted: Trusted certificates mapping from subject, formatted as
-            rfc4514, to certificate.
+        trusted: Trusted certificates mapping from subject (name) to
+            certificate.
         hash_alg: Hashing algorithm used for operations like fingerprint
             comparison, etc. Defaults to SHA-256.
 
@@ -211,12 +221,11 @@ def verify_root_certificate(
     verification_time = verification_time or _get_default_verification_time()
     hash_alg = hash_alg or hashes.SHA256()
 
-    root_cert_subject = root_cert.subject.rfc4514_string()
-    if root_cert_subject not in trusted:
-        raise RootCertificateNotFoundError(root_cert_subject)
+    if root_cert.subject not in trusted:
+        raise RootCertificateNotFoundError(root_cert.subject.rfc4514_string())
 
     # Match fingerprint
-    trusted_root_ca = trusted[root_cert_subject]
+    trusted_root_ca = trusted[root_cert.subject]
     trusted_root_cert_fp = trusted_root_ca.fingerprint(hash_alg)
     root_cert_fp = root_cert.fingerprint(hash_alg)
 
@@ -270,13 +279,57 @@ def verify_certificate_validity_period(
 ######################
 
 
+@dataclasses.dataclass
+class VerifyOcspConfig:
+    """Configuration to verify certificates.
+
+    Attributes:
+        hash_alg: Hash algorithm used to construct OCSP requests.
+            Defaults to `hashes.SHA1`.
+        nonce_size: Size in bytes of the OCSP nonce.
+        ignore_unknown: Whether to ignore OCSP's status UNKNOWN or
+            consider it a verification error.
+            Defaults to True.
+
+        verify_responder: Whether to verify responder certificate. If enabled
+            there are 3 possibilities:
+                1 - Responder and Issuer are the same: Issuer is *trusted*
+                    (verifying it should be done by the user using
+                    `verify_certificate_chain`) and the response signature
+                    is verified with the Issuer certificate.
+                2 - Responder certificate is different but is signed by
+                    Issuer: The same criteria applies, Issuer is *trusted*
+                    and used to verify the responder certificate, which
+                    in turn is used to verify the response.
+                3 - Responder certificate is different and signed by another
+                    certificate: Then a trusted set of certificates is
+                    required to verify the certificate.
+
+        trusted: Trusted certificates mapping from subject (name) to
+            certificate. If not provided a responder certificate
+            verification may fail.
+    """
+
+    hash_alg: hashes.HashAlgorithm = dataclasses.field(
+        default_factory=hashes.SHA1,
+    )
+    nonce_size: int = 20
+    ignore_unknown: bool = True
+    verify_responder: bool = False
+
+    trusted: Mapping[x509.Name, x509.Certificate] = dataclasses.field(
+        default_factory=dict,
+    )
+
+    def __post_init__(self) -> None:  # noqa: D105
+        if self.nonce_size < 1:
+            raise ValueError("`nonce_size` must be at least 1")  # noqa: EM101, TRY003
+
+
 def verify_ocsp_status(
     certificate: x509.Certificate,
     issuer: x509.Certificate,
-    hash_alg: hashes.HashAlgorithm | None = None,
-    nonce_size: int = 20,
-    *,
-    ignore_unknown: bool = True,
+    config: VerifyOcspConfig | None = None,
 ) -> None:
     """Verifies the status of a certificate using Online Certificate Status Protocol.
 
@@ -284,11 +337,7 @@ def verify_ocsp_status(
         certificate: The certificate whose revocation status needs to be
             verified.
         issuer: The issuer certificate that signed the target certificate.
-        hash_alg: The hashing algorithm used to generate the OCSP request.
-            Defaults to `hashes.SHA1`.
-        nonce_size: The size (in bytes) of the OCSP nonce. Defaults to 20.
-        ignore_unknown: If True (default), ignores certificates with an
-            `UNKNOWN` OCSP status. If False, raises an exception.
+        config: Configuration of the OCSP verification process.
 
     Raises:
         OcspRevokedStatusError:
@@ -313,11 +362,12 @@ def verify_ocsp_status(
             used, as some OCSP servers may not support other hash algorithms
             and may fail with `UNAUTHORIZED` or `MALFORMED` responses.
     """
-    hash_alg = hash_alg or hashes.SHA1()  # noqa: S303
-    aia_info = extract_aia_information(certificate)
-    nonce = secrets.token_bytes(nonce_size)
+    config = config or VerifyOcspConfig()
 
-    if hash_alg.name.lower() != "sha1":
+    aia_info = extract_aia_information(certificate)
+    nonce = secrets.token_bytes(config.nonce_size)
+
+    if config.hash_alg.name.lower() != "sha1":
         warnings.warn(
             "Some OCSP servers may fail with UNAUTHORIZED or MALFORMED "
             " responses if request hash is different than SHA1",
@@ -327,7 +377,7 @@ def verify_ocsp_status(
 
     if aia_info.ocsp_urls:
         builder = ocsp.OCSPRequestBuilder()
-        builder = builder.add_certificate(certificate, issuer, hash_alg)
+        builder = builder.add_certificate(certificate, issuer, config.hash_alg)
         builder = builder.add_extension(x509.OCSPNonce(nonce), critical=False)
         ocsp_request = builder.build()
 
@@ -336,10 +386,11 @@ def verify_ocsp_status(
                 ocsp_request=ocsp_request,
                 ocsp_url=ocsp_url,
                 issuer=issuer,
+                config=config,
             )
             if last_status == ocsp.OCSPCertStatus.REVOKED:
                 raise OcspRevokedStatusError(certificate.subject.rfc4514_string())
-            if last_status == ocsp.OCSPCertStatus.UNKNOWN and not ignore_unknown:
+            if last_status == ocsp.OCSPCertStatus.UNKNOWN and not config.ignore_unknown:
                 raise OcspUnknownStatusError(certificate.subject.rfc4514_string())
 
 
@@ -347,6 +398,7 @@ def _run_ocsp_request(
     ocsp_request: ocsp.OCSPRequest,
     ocsp_url: str,
     issuer: x509.Certificate,
+    config: VerifyOcspConfig,
 ) -> ocsp.OCSPCertStatus:
     http_request = Request(  # noqa: S310
         url=ocsp_url,
@@ -377,6 +429,19 @@ def _run_ocsp_request(
         ocsp_response=ocsp_resp,
         issuer=issuer,
     )
+    try:
+        _verify_ocsp_responder_certificate(
+            responder_cert=responder_cert,
+            issuer=issuer,
+            config=config,
+        )
+    except (
+        CertificateIssuerNameError,
+        CertificateIssuerNotTrustedError,
+        CertificateSignatureError,
+    ) as err:
+        raise OcspResponderCertificateError(err) from err
+
     responder_key = responder_cert.public_key()
 
     try:
@@ -415,20 +480,35 @@ def _get_ocsp_responder_certificate(
     ocsp_response: ocsp.OCSPResponse,
     issuer: x509.Certificate,
 ) -> x509.Certificate:
-    responder_cert = issuer
-
     # We only request OCSP of a single certificate so the response
     # should only contain one responder certificate, if any.
     if ocsp_response.certificates:
-        responder_cert = ocsp_response.certificates[0]
-
-        try:
-            verify_directly_issued_by(certificate=responder_cert, issuer=issuer)
-        except (CertificateIssuerNameError, CertificateSignatureError) as err:
-            raise OcspResponderCertificateError(err) from None
+        return ocsp_response.certificates[0]
 
     # Fallback to issuer as responder
-    return responder_cert
+    return issuer
+
+
+def _verify_ocsp_responder_certificate(
+    responder_cert: x509.Certificate,
+    issuer: x509.Certificate,
+    config: VerifyOcspConfig,
+) -> None:
+    if config.verify_responder and responder_cert != issuer:
+        responder_issuer = (
+            issuer
+            if responder_cert.issuer == issuer.subject
+            else config.trusted.get(responder_cert.issuer)
+        )
+        if responder_issuer is not None:
+            verify_directly_issued_by(
+                certificate=responder_cert,
+                issuer=responder_issuer,
+            )
+        else:
+            raise CertificateIssuerNotTrustedError(
+                issuer=responder_cert.issuer.rfc4514_string(),
+            )
 
 
 # Since version 42 not_valid_before and not_valid_after are deprecated
