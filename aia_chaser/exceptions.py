@@ -51,7 +51,12 @@ class CertificateVerificationError(AiaChaserError):
 
 
 class CertificateIssuerNameError(CertificateVerificationError):
-    """Certificate issuer name does not match issuer's subject."""
+    """Certificate issuer name does not match issuer's subject.
+
+    Args:
+        cert_issuer: Certificate's issuer subject.
+        issuer_subject: Issuer's subject.
+    """
 
     def __init__(self, cert_issuer: str, issuer_subject: str) -> None:
         super().__init__(
@@ -63,7 +68,11 @@ class CertificateIssuerNameError(CertificateVerificationError):
 
 
 class CertificateKeyTypeError(CertificateVerificationError):
-    """Unsupported key type used to sign a certificate."""
+    """Unsupported key type used to sign a certificate.
+
+    Args:
+        reason: Message explaining the cause of the error.
+    """
 
     def __init__(self, reason: str) -> None:
         msg = "certificate does not provide a supported public key"
@@ -74,7 +83,12 @@ class CertificateKeyTypeError(CertificateVerificationError):
 
 
 class CertificateSignatureError(CertificateVerificationError):
-    """Issuer's certificate did not sign the certificate."""
+    """Issuer's certificate did not sign the certificate.
+
+    Args:
+        certificate: Certificate whose signature is being validated.
+        issuer: Certificate that should have signed the `certificate`.
+    """
 
     def __init__(self, certificate: str, issuer: str) -> None:
         super().__init__(f"issuer ({issuer}) did not sign certificate ({certificate})")
@@ -130,7 +144,12 @@ class CertificateTimeZoneError(CertificateVerificationError):
 
 
 class RootCertificateNotFoundError(CertificateVerificationError):
-    """Root certificate not in trusted database."""
+    """Root certificate not in trusted database.
+
+    Args:
+        subject: Subject of the certificate not found among the
+            trusted certificates.
+    """
 
     def __init__(self, subject: str) -> None:
         super().__init__(
@@ -169,7 +188,12 @@ class OcspUnknownStatusError(OcspError):
 
 
 class OcspHttpError(OcspError):
-    """OCSP failed due to an HTTP protocol error."""
+    """OCSP failed due to an HTTP protocol error.
+
+    Args:
+        ocsp_url: OCSP endpoint url.
+        http_status: HTTP status indicating the type of error.
+    """
 
     def __init__(self, ocsp_url: str, http_status: int) -> None:
         super().__init__(
@@ -181,7 +205,11 @@ class OcspHttpError(OcspError):
 
 
 class OcspResponseStatusError(OcspError):
-    """OCSP response status is not successful."""
+    """OCSP response status is not successful.
+
+    Args:
+        status: OCSP response status.
+    """
 
     def __init__(self, status: OCSPResponseStatus) -> None:
         super().__init__(f"OCSP response status was {status}")

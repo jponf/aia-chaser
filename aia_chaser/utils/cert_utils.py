@@ -17,12 +17,20 @@ if TYPE_CHECKING:
 
 
 def certificates_to_der(certificates: list[x509.Certificate]) -> bytes:
-    """DER representation of the given certificates."""
+    """DER representation of the given certificates.
+
+    Returns:
+        A bytes object with the DER content of `certificates`.
+    """
     return b"".join(cert.public_bytes(Encoding.DER) for cert in certificates)
 
 
 def certificates_to_pem(certificates: list[x509.Certificate]) -> str:
-    """PEM representation of the given certificates."""
+    """PEM representation of the given certificates.
+
+    Returns:
+        A string with the PEM content of `certificates`.
+    """
     return "\n".join(
         cert.public_bytes(Encoding.PEM).decode("ascii") for cert in certificates
     )
@@ -69,7 +77,7 @@ def find_leaf_certificates(
 
     Returns:
         List with the certificates that are not issuers of any of the
-        other provided certificates.
+            other provided certificates.
     """
     graph = collections.defaultdict(list)
     for cert in certificates:
@@ -118,7 +126,7 @@ def build_certificate_chains(
 
     Returns:
         All certificate chains found in `certificates` each starting at
-        its corresponding leaf certificate.
+            its corresponding leaf certificate.
     """
     leaves = find_leaf_certificates(certificates)
     certs_map = {cert.subject: cert for cert in certificates}
