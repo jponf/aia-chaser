@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2025-02-21
+
+### 🚀 Features
+
+- Improve OCSP verification
+
+### 📚 Documentation
+
+- Fix docstrings
+
 ## [2.0.0] - 2025-02-18
 
 ### 🚀 Features
