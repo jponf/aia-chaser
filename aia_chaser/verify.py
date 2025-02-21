@@ -293,6 +293,7 @@ class VerifyOcspConfig:
 
         verify_responder: Whether to verify responder certificate. If enabled
             there are 3 possibilities:
+
                 1 - Responder and Issuer are the same: Issuer is *trusted*
                     (verifying it should be done by the user using
                     `verify_certificate_chain`) and the response signature
