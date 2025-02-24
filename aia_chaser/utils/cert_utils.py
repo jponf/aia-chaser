@@ -36,6 +36,37 @@ def certificates_to_pem(certificates: list[x509.Certificate]) -> str:
     )
 
 
+def load_ssl_ca_certificates(
+    context: ssl.SSLContext | None = None,
+    *,
+    force_load: bool = True,
+) -> list[x509.Certificate]:
+    """Load CA certificates available to Python's `ssl`.
+
+    Args:
+        context: The SSL context used to get the default certificates.
+            If not provided a default context is created with
+            `ssl.SSLContext()`.
+        force_load: Forcefully load default certificates into the SSL
+            context. Certificates in CA path directory are not loaded
+            unless they have been used at leas one by the SSL context.
+
+            For more information see
+            [`force_load_default_verify_certificates`][aia_chaser.utils.cert_utils.force_load_default_verify_certificates].
+
+    Returns:
+        A list with the CA certificates from `context`.
+    """
+    context = context or ssl.SSLContext()
+    context = ssl.SSLContext()
+    if force_load:
+        force_load_default_verify_certificates(context)
+
+    # Load trusted certificates
+    trusted_der = context.get_ca_certs(True)  # noqa: FBT003
+    return list(map(x509.load_der_x509_certificate, trusted_der))
+
+
 def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
     """Forcefully load default verify certificates into the SSL context.
 

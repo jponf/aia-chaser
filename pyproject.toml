@@ -1,14 +1,13 @@
-[tool.poetry]
+[project]
 name = "aia-chaser"
 version = "3.0.0"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/jponf/aia-chaser"
-documentation = "https://aia-chaser.readthedocs.io/"
 
 description = "Chase authority information access from a host certificate to complete the chain of trust."
 
-authors = ["Josep Pon Farreny <jponfarreny@gmail.com>"]
+authors = [{ name = "Josep Pon Farreny", email = "jponfarreny@gmail.com" }]
+
 keywords = ["AIA", "SSL", "TLS", "X.509", "Certificate Chain"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -28,6 +27,15 @@ classifiers = [
     "Topic :: Security",
     "Topic :: System :: Networking",
 ]
+
+[project.urls]
+repository = "https://github.com/jponf/aia-chaser"
+documentation = "https://aia-chaser.readthedocs.io/"
+changelog = "https://aia-chaser.readthedocs.io/en/stable/changelog/"
+
+[tool.poetry]
+package-mode = true
+
 
 [tool.poetry.requires-plugins]
 poetry-plugin-export = ">=1.8"

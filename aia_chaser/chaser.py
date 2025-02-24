@@ -21,7 +21,7 @@ from aia_chaser.exceptions import (
 from aia_chaser.utils.cert_utils import (
     certificates_to_der,
     extract_aia_information,
-    force_load_default_verify_certificates,
+    load_ssl_ca_certificates,
 )
 from aia_chaser.utils.url import extract_host_port_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
@@ -57,31 +57,31 @@ class AiaChaser:
 
     def __init__(self, context: ssl.SSLContext | None = None) -> None:
         self._context = context or ssl.SSLContext()
-        if not context:
-            force_load_default_verify_certificates(self._context)
 
         # Load trusted certificates
-        trusted_der = list(self._context.get_ca_certs(True))  # noqa: FBT003
-        trusted_cert = list(map(x509.load_der_x509_certificate, trusted_der))
+        trusted_cert = load_ssl_ca_certificates(
+            self._context,
+            force_load=context is None,
+        )
 
         self._trusted = {ca_cert.subject: ca_cert for ca_cert in trusted_cert}
 
-    def aia_chase(
+    def aia_chase_cert(
         self,
-        host: str,
-        port: int = 443,
+        certificate: x509.Certificate,
     ) -> Iterator[x509.Certificate]:
-        """Generates a certificate chain from host to root certificate.
+        """Chase AIA CA information from the provided certificate.
 
         Args:
-            host: Host to generate the certificate chain for.
-            port: Port on host to connect and retrieve the initial
-                certificate.
+            certificate: Start AIA chasing from this certificate.
 
         Yields:
-            The certificates from the certificate chain, starting at host.
+            The certificates from the certificate chain of
+                `certificate`. The first is the provided
+                certificate and the last is the root or a
+                trusted CA.
         """
-        cert = self.fetch_host_cert(host=host, port=port)
+        cert = certificate
         while True:
             cert_info = _extract_aia_info(cert)
 
@@ -119,6 +119,27 @@ class AiaChaser:
 
             ca_url = cert_info.aia_ca_issuers[0]
             cert = _download_certificate(ca_url)
+
+    def aia_chase(
+        self,
+        host: str,
+        port: int = 443,
+    ) -> Iterator[x509.Certificate]:
+        """Chase AIA CA information starting from the `host`'s certificate.
+
+        Args:
+            host: Host to get the initial certificate.
+            port: Port on host to connect and retrieve the initial
+                certificate.
+
+        Yields:
+            The certificates from the certificate chain of the
+                host's certificate. The first is the host's
+                certificate and the last is the root or a
+                trusted CA.
+        """
+        cert = self.fetch_host_cert(host=host, port=port)
+        yield from self.aia_chase_cert(certificate=cert)
 
     def fetch_host_cert(self, host: str, port: int = 443) -> x509.Certificate:
         """Get the host, port pair certificate.
