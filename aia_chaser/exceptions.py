@@ -46,6 +46,40 @@ class CertificateParseError(AiaChaserError):
         self.reasons = reasons
 
 
+class NoValidAiaCaUrlError(AiaChaserError):
+    """None of the AIA CA URLs is a valid http or https URL.
+
+    Args:
+        urls: URLs that were provided to fetch the CA.
+    """
+
+    def __init__(self, urls: Sequence[str]) -> None:
+        super().__init__(
+            f"at least one of the AIA CA urls ({urls}) must be an http or https url",
+        )
+        self.urls = urls
+
+
+class AiaChaseExhaustedError(AiaChaserError):
+    """Failed to retrieve the issuing CA after exhausting all AIA URLs.
+
+    Arguments:
+        errors: A collection of errors encountered while attempting to
+            fetch the CA.
+
+    Attributes:
+        errors: A collection of errors encountered while attempting to
+            fetch the CA.
+    """
+
+    def __init__(
+        self,
+        errors: Sequence[CertificateDownloadError | CertificateParseError],
+    ) -> None:
+        super().__init__("AIA chasing failed after exhausting all CA urls")
+        self.errors = errors
+
+
 class CertificateVerificationError(AiaChaserError):
     """Base exception for certificate verification errors."""
 

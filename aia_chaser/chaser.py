@@ -13,9 +13,11 @@ from cryptography import x509
 
 from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
 from aia_chaser.exceptions import (
+    AiaChaseExhaustedError,
     CertificateDownloadError,
     CertificateParseError,
     MissingPeerCertificateError,
+    NoValidAiaCaUrlError,
     RootCertificateNotFoundError,
 )
 from aia_chaser.utils.cert_utils import (
@@ -28,7 +30,7 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
 
 __all__ = ["AiaChaser"]
@@ -117,8 +119,7 @@ class AiaChaser:
                 yield self._trusted[cert_info.issuer]
                 break
 
-            ca_url = cert_info.aia_ca_issuers[0]
-            cert = _download_certificate(ca_url)
+            cert = _try_download_certificate(cert_info.aia_ca_issuers)
 
     def aia_chase(
         self,
@@ -407,6 +408,24 @@ class AiaChaser:
             verify=verify,
         )
         context.load_verify_locations(cadata=certificates_to_der(certificates))
+
+
+def _try_download_certificate(urls: Sequence[str]) -> x509.Certificate:
+    http_urls = [url for url in urls if url.lower().startswith(("http:", "https:"))]
+    if not http_urls:
+        raise NoValidAiaCaUrlError(urls=urls)
+
+    errors = []
+    for http_url in http_urls:
+        try:
+            return _download_certificate(http_url)
+        except (  # noqa: PERF203
+            CertificateDownloadError,
+            CertificateParseError,
+        ) as err:
+            errors.append(err)
+
+    raise AiaChaseExhaustedError(errors=errors)
 
 
 @functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
