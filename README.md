@@ -15,26 +15,25 @@
 [![Read the Docs](https://img.shields.io/readthedocs/aia-chaser)](https://aia-chaser.readthedocs.io)
 
 
+This package helps automatically retrieve missing certificates to complete a secure SSL chain of trust. It ensures that even if a server doesn’t provide the full certificate chain, your connection remains secure.
 
-This package provides authority information access (AIA) chasing
-from a host/leaf certificate to complete its chain of trust and
-generate an SSL context to establish a secure connection.
+## What is AIA Chasing?
 
-## Overview
+AIA (Authority Information Access) is a feature in SSL certificates, defined in
+[RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280), that points to:
 
-AIA, an extension of the X509 standard in
-[RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280),
-points a client towards two types of endpoints:
-  * CA Issuers: To fetch the *issuer* certificate.
-  * OSCP: To check the certificate's revocation status.
+ - CA Issuers – To fetch missing issuer certificates.
+ - OCSP – To check if a certificate has been revoked.
 
-Thanks to this information, it is possible to complete the chain of trust
-of a certificate. Without AIA chasing, some HTTPS requests may fail if
-the endpoint does not provide all the certificates of its chain of trust.
+By following these links, this package helps fill in the gaps, ensuring your
+SSL connections don’t fail due to missing certificates.
 
-You may have experienced that already when some HTTPS URL works on your
-browser but fail when using `curl` or `Python` + `requests`. Then this
-package could be helpful to you :guide_dog:.
+## Why Does This Matter?
+
+Sometimes, a website works fine in your browser but fails when using `curl` or
+Python’s `requests` library. That is because browsers often handle AIA chasing
+automatically, while other tools don’t. If you’ve run into SSL errors like
+this, this package can help! :guide_dog:.
 
 ## Examples
 
