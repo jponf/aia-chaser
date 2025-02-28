@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+import contextlib
 import ssl
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
@@ -86,16 +87,19 @@ def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
     ssl_defaults = ssl.get_default_verify_paths()
 
     if ssl_defaults.capath is not None:
-        ca_files = filter(
-            lambda ca_file: ca_file.is_file() and not ca_file.name.startswith("."),
-            Path(ssl_defaults.capath).iterdir(),
-        )
         # Note: We found that some ssl installations have files that
-        # are not cert, i.e., homebrew's openssl has a .keepme. For now
+        #   are not cert, i.e., homebrew's openssl has a .keepme. For now
         # we ignore files that start with '.' but a try except might
         # be necessary ¯\_(ツ)_/¯
+        ca_files = (
+            ca_file
+            for ca_file in Path(ssl_defaults.capath).iterdir()
+            if ca_file.is_file() and not ca_file.name.startswith(".")
+        )
+
         for ca_file in ca_files:
-            context.load_verify_locations(ca_file)
+            with contextlib.suppress(ssl.SSLError):
+                context.load_verify_locations(ca_file)
 
 
 def find_leaf_certificates(
