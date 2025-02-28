@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.1] - 2025-02-28
+
+### 🐛 Bug Fixes
+
+- Ignore SSLError when loading ca_files
+
 ## [3.1.0] - 2025-02-24
 
 ### 🚀 Features
