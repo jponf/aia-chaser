@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding
 
 from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
 from aia_chaser.exceptions import (
@@ -55,18 +56,42 @@ class AiaChaser:
             the time of crating the `AiaChaser` are considered the trusted
             root CAs. If not given a new SSLContext is created with the
             default certificates.
+        trusted_ca: Additional trusted CA certificates.
     """
 
-    def __init__(self, context: ssl.SSLContext | None = None) -> None:
+    def __init__(
+        self,
+        context: ssl.SSLContext | None = None,
+        trusted_cas: Sequence[x509.Certificate] | None = None,
+    ) -> None:
+        trusted_cas = trusted_cas or []
+
         self._context = context or ssl.SSLContext()
 
         # Load trusted certificates
-        trusted_cert = load_ssl_ca_certificates(
+        ssl_trusted_cert = load_ssl_ca_certificates(
             self._context,
             force_load=context is None,
         )
 
-        self._trusted = {ca_cert.subject: ca_cert for ca_cert in trusted_cert}
+        self._trusted = {ca_cert.subject: ca_cert for ca_cert in ssl_trusted_cert}
+        for cert in trusted_cas:
+            self.add_trusted_cert(cert)  # self._context and self._trusted must exist
+
+    def add_trusted_cert(self, cert: x509.Certificate) -> None:
+        """Trust the provided certificate.
+
+        If the certificate subject already exists in the trusted mapping
+        it will not be overwritten.
+
+        Args:
+            cert: Certificate to trust.
+        """
+        if cert.subject not in self._trusted:
+            self._context.load_verify_locations(
+                cadata=cert.public_bytes(Encoding.DER),
+            )
+            self._trusted[cert.subject] = cert
 
     def aia_chase_cert(
         self,
