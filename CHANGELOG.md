@@ -2,11 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.2] - 2025-03-06
+
+### 🚀 Features
+
+- Add trusted certificates to chaser directly
+  - Originally only ssl context certificates were trusted
+
 ## [3.1.1] - 2025-02-28
 
 ### 🐛 Bug Fixes
 
 - Ignore SSLError when loading ca_files
+
+### 📚 Documentation
+
+- Improve readme
 
 ## [3.1.0] - 2025-02-24
 
