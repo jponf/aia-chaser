@@ -4,6 +4,7 @@ from aia_chaser import AiaChaser, VerifyCertificatesConfig
 from aia_chaser.exceptions import (
     CertificateChainError,
     CertificateExpiredError,
+    CrlRevokedError,
     OcspRevokedStatusError,
 )
 
@@ -105,8 +106,9 @@ def test_aia_chase_url_ignore_expired(url_string: str) -> None:
     assert len(chain) >= 1
 
 
-REVOKED_URLS = (
-    "https://revoked.badssl.com/",
+REVOKED_CRL_URLS = ("https://revoked.badssl.com/",)
+
+REVOKED_OCSP_URLS = (
     "https://revoked.grc.com/",
     "https://revoked-rsa-dv.ssl.com/",
     "https://revoked-rsa-ev.ssl.com/",
@@ -117,7 +119,23 @@ REVOKED_URLS = (
 
 @pytest.mark.parametrize(
     "url_string",
-    REVOKED_URLS,
+    REVOKED_CRL_URLS,
+)
+def test_aia_chase_url_crl_revoked(url_string: str) -> None:
+    chaser = AiaChaser()
+    with pytest.raises(CertificateChainError) as exc_info:
+        chaser.fetch_ca_chain_for_url(
+            url_string=url_string,
+            verify_config=VerifyCertificatesConfig(
+                crl_enabled=True,
+            ),
+        )
+    assert type(exc_info.value.reason) is CrlRevokedError
+
+
+@pytest.mark.parametrize(
+    "url_string",
+    REVOKED_OCSP_URLS,
 )
 def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
     chaser = AiaChaser()
@@ -133,7 +151,7 @@ def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
 
 @pytest.mark.parametrize(
     "url_string",
-    REVOKED_URLS,
+    REVOKED_OCSP_URLS,
 )
 def test_aia_chase_url_ignore_ocsp_revoked(url_string: str) -> None:
     chaser = AiaChaser()
