@@ -26,6 +26,9 @@ from aia_chaser.exceptions import (
     CertificateSignatureError,
     CertificateTimeZoneError,
     CertificateVerificationError,
+    CrlHttpError,
+    CrlParseError,
+    CrlRevokedError,
     OcspError,
     OcspHttpError,
     OcspResponderCertificateError,
@@ -38,12 +41,13 @@ from aia_chaser.exceptions import (
 )
 from aia_chaser.utils.cert_utils import (
     extract_aia_information,
+    extract_crl_urls,
     select_rsa_padding_for_signature_algorithm_oid,
 )
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
 
 def _get_default_verification_time() -> datetime.datetime:
@@ -58,6 +62,8 @@ class VerifyCertificatesConfig:
         fingerprint_hash_alg: Hash algorithm used to verify that the
             root certificate from the chain is the same as the one
             found in the trusted certificates. Defaults to `hashes.SHA256`.
+
+        crl_enabled: Whether or not perform CRL validation.
 
         ocsp_enabled: Whether or not perform OCSP validation.
             Defaults to True.
@@ -78,6 +84,8 @@ class VerifyCertificatesConfig:
     fingerprint_hash_alg: hashes.HashAlgorithm = dataclasses.field(
         default_factory=hashes.SHA256,
     )
+
+    crl_enabled: bool = False
 
     ocsp_enabled: bool = False
     ocsp_hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -117,9 +125,11 @@ def verify_certificate_chain(
     """
     config = config or VerifyCertificatesConfig()
 
-    with contextlib.suppress(StopIteration):
-        certificates, ca_certificates = itertools.tee(certificates)
+    certificates, ca_certificates = itertools.tee(certificates, 2)
+    try:
         root_cert = next(ca_certificates)
+    except StopIteration:  # Iterator is empty, nothing to verify
+        return
 
     chain_index = 0
     try:
@@ -131,6 +141,11 @@ def verify_certificate_chain(
                 verification_time=config.verification_time,
             )
             verify_directly_issued_by(certificate=issued, issuer=issuer)
+            if config.crl_enabled:
+                verify_crl_status(
+                    certificate=issued,
+                    verification_time=config.verification_time,
+                )
             if config.ocsp_enabled:
                 verify_ocsp_status(
                     certificate=issued,
@@ -272,6 +287,84 @@ def verify_certificate_validity_period(
             not_valid_after=not_valid_after,
             verification_time=verification_time,
         )
+
+
+######################
+# Verify OCSP Status #
+######################
+
+
+def verify_crl_status(
+    certificate: x509.Certificate,
+    verification_time: datetime.datetime | None,
+) -> None:
+    """Verifies the status of a certificate using revocation lists.
+
+    Args:
+        certificate: The certificate whose revocation status needs to be
+            verified.
+        verification_time: time at which the verification is being conducted.
+            Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
+    """
+    verification_time = verification_time or _get_default_verification_time()
+    crl_urls = extract_crl_urls(certificate)
+
+    crl = _download_any_crl(crl_urls)
+    next_update = _get_crl_next_update(crl)
+    if next_update and verification_time > next_update:
+        warnings.warn(
+            f"CRL expired on {next_update}",
+            category=UserWarning,
+            stacklevel=2,
+        )
+
+    # Look for certificate serial number in CRL
+    cert_serial = certificate.serial_number
+    for revoked_cert in crl:
+        if revoked_cert.serial_number == cert_serial:
+            reason = ""
+            with contextlib.suppress(x509.ExtensionNotFound):
+                reason = revoked_cert.extensions.get_extension_for_class(
+                    x509.CRLReason,
+                ).value.reason.value
+
+            raise CrlRevokedError(
+                certificate=certificate.subject.rfc4514_string(),
+                revocation_date=revoked_cert.revocation_date,
+                reason=reason,
+            )
+
+
+def _download_any_crl(crl_urls: Sequence[str]) -> x509.CertificateRevocationList:
+    last_idx = len(crl_urls) - 1
+
+    for idx, url in enumerate(crl_urls):
+        with urlopen(url) as response:  # noqa: S310
+            if response.status != http.HTTPStatus.OK and idx == last_idx:
+                raise CrlHttpError(crl_url=url, http_status=response.status)
+            crl_data = response.read()
+            try:
+                return _try_parse_crl(crl_data)
+            except CrlParseError:
+                if idx == last_idx:
+                    raise
+
+    msg = "downloading CRL failed for unexpected reasons"
+    raise RuntimeError(msg)
+
+
+_CRL_PARSE_FNS = (x509.load_der_x509_crl, x509.load_der_x509_crl)
+
+
+def _try_parse_crl(data: bytes) -> x509.CertificateRevocationList:
+    exceptions = []
+    for parse_fn in _CRL_PARSE_FNS:
+        try:
+            return parse_fn(data)
+        except (ValueError, TypeError) as err:  # noqa: PERF203
+            exceptions.append(err)
+
+    raise CrlParseError(reasons=[str(err) for err in exceptions])
 
 
 ######################
@@ -523,6 +616,11 @@ if hasattr(x509.Certificate, "not_valid_before_utc"):
     def _get_not_valid_after(cert: x509.Certificate) -> datetime.datetime:
         return cert.not_valid_after_utc
 
+    def _get_crl_next_update(
+        crl: x509.CertificateRevocationList,
+    ) -> datetime.datetime | None:
+        return crl.next_update_utc
+
 else:
 
     def _get_not_valid_before(cert: x509.Certificate) -> datetime.datetime:
@@ -530,3 +628,11 @@ else:
 
     def _get_not_valid_after(cert: x509.Certificate) -> datetime.datetime:
         return cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+
+    def _get_crl_next_update(
+        crl: x509.CertificateRevocationList,
+    ) -> datetime.datetime | None:
+        next_update = crl.next_update
+        if next_update is not None:
+            return next_update.replace(tzinfo=datetime.timezone.utc)
+        return next_update

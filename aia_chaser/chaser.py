@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import collections
 import contextlib
 import functools
 import http
 import socket
 import ssl
 import warnings
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Callable, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
-from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
 
 from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
 from aia_chaser.exceptions import (
@@ -108,8 +109,9 @@ class AiaChaser:
                 certificate and the last is the root or a
                 trusted CA.
         """
-        cert = certificate
+        to_process = collections.deque([certificate])
         while True:
+            cert = to_process.popleft()
             cert_info = _extract_aia_info(cert)
 
             # Already trusted & self-signed
@@ -135,16 +137,18 @@ class AiaChaser:
             # Yield and continue AIA chasing
             yield cert
 
-            # No more intermediate CAs, issuer must be trusted
+            # Current cert does not have more intermediate CAs
             if not cert_info.aia_ca_issuers:
-                if cert_info.issuer not in self._trusted:
+                # If there are not more certificates the issuer is expected to
+                # be in the trusted set.
+                if not to_process and cert_info.issuer not in self._trusted:
                     raise RootCertificateNotFoundError(
                         subject=cert_info.issuer.rfc4514_string(),
                     )
                 yield self._trusted[cert_info.issuer]
                 break
 
-            cert = _try_download_certificate(cert_info.aia_ca_issuers)
+            to_process.extend(_try_download_certificate(cert_info.aia_ca_issuers))
 
     def aia_chase(
         self,
@@ -340,7 +344,7 @@ class AiaChaser:
             url_string=url_string,
             verify_config=verify_config,
             verify=verify,
-        )[:1]
+        )
 
     def make_ssl_context_for_host(
         self,
@@ -435,7 +439,7 @@ class AiaChaser:
         context.load_verify_locations(cadata=certificates_to_der(certificates))
 
 
-def _try_download_certificate(urls: Sequence[str]) -> x509.Certificate:
+def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
     http_urls = [url for url in urls if url.lower().startswith(("http:", "https:"))]
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
@@ -454,7 +458,7 @@ def _try_download_certificate(urls: Sequence[str]) -> x509.Certificate:
 
 
 @functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
-def _download_certificate(url_string: str) -> x509.Certificate:
+def _download_certificate(url_string: str) -> list[x509.Certificate]:
     if url_string.startswith("https:"):
         warnings.warn(
             "Trying to download an intermediate CA certificate using HTTPS",
@@ -486,10 +490,26 @@ def _download_certificate(url_string: str) -> x509.Certificate:
             ) from None
 
 
-def _try_parse_certificate(data: bytes) -> x509.Certificate:
-    parse_fns = [x509.load_der_x509_certificate, x509.load_pem_x509_certificate]
+def _wrap_single_cert_parser(
+    parser_func: Callable[[bytes], x509.Certificate],
+) -> Callable[[bytes], list[x509.Certificate]]:
+    def wrapper(data: bytes) -> list[x509.Certificate]:
+        return [parser_func(data)]
+
+    return wrapper
+
+
+_CERT_PARSE_FNS = (
+    _wrap_single_cert_parser(x509.load_der_x509_certificate),
+    _wrap_single_cert_parser(x509.load_pem_x509_certificate),
+    pkcs7.load_der_pkcs7_certificates,
+    pkcs7.load_pem_pkcs7_certificates,
+)
+
+
+def _try_parse_certificate(data: bytes) -> list[x509.Certificate]:
     exceptions = []
-    for parse_fn in parse_fns:
+    for parse_fn in _CERT_PARSE_FNS:
         try:
             return parse_fn(data)
         except (ValueError, TypeError) as err:  # noqa: PERF203
