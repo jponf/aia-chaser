@@ -199,7 +199,7 @@ def extract_aia_information(
     """
     try:
         aia_extension = cast(
-            x509.Extension[x509.AuthorityInformationAccess],
+            "x509.Extension[x509.AuthorityInformationAccess]",
             certificate.extensions.get_extension_for_oid(
                 x509.ExtensionOID.AUTHORITY_INFORMATION_ACCESS,
             ),
