@@ -344,7 +344,7 @@ class AiaChaser:
             url_string=url_string,
             verify_config=verify_config,
             verify=verify,
-        )[:1]
+        )
 
     def make_ssl_context_for_host(
         self,
@@ -499,12 +499,12 @@ def _wrap_single_cert_parser(
     return wrapper
 
 
-_CERT_PARSE_FNS = [
+_CERT_PARSE_FNS = (
     _wrap_single_cert_parser(x509.load_der_x509_certificate),
     _wrap_single_cert_parser(x509.load_pem_x509_certificate),
     pkcs7.load_der_pkcs7_certificates,
     pkcs7.load_pem_pkcs7_certificates,
-]
+)
 
 
 def _try_parse_certificate(data: bytes) -> list[x509.Certificate]:
