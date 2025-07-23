@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import datetime
 import http
@@ -117,9 +116,11 @@ def verify_certificate_chain(
     """
     config = config or VerifyCertificatesConfig()
 
-    with contextlib.suppress(StopIteration):
-        certificates, ca_certificates = itertools.tee(certificates)
+    certificates, ca_certificates = itertools.tee(certificates, 2)
+    try:
         root_cert = next(ca_certificates)
+    except StopIteration:  # Iterator is empty, nothing to verify
+        return
 
     chain_index = 0
     try:
