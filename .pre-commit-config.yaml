@@ -54,13 +54,13 @@ repos:
         files: poetry.lock|requirements.txt|requirements-dev.txt
         pass_filenames: false
         args: [gen-req]
-      - id: safety
-        name: Running safety check on requirements.txt
-        stages: [commit]
-        language: system
-        entry: poetry run safety
+      - id: pip-audit
+        name: pip-audit
+        description: "Audits Python environments and dependency trees for known vulnerabilities"
+        entry: poetry run pip-audit
         pass_filenames: false
-        args: [check, --full-report, -r, requirements.txt]
+        language: system
+        files: poetry.lock|requirements.txt|requirements-dev.txt|requirements-test.txt
       - id: mypy
         name: Running mypy
         stages: [commit]
