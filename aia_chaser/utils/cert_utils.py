@@ -201,7 +201,7 @@ def extract_aia_information(
         aia_extension = cast(
             "x509.Extension[x509.AuthorityInformationAccess]",
             certificate.extensions.get_extension_for_oid(
-                x509.ExtensionOID.AUTHORITY_INFORMATION_ACCESS,
+                x509.OID_AUTHORITY_INFORMATION_ACCESS,
             ),
         )
     except x509.ExtensionNotFound:
@@ -210,15 +210,32 @@ def extract_aia_information(
     ca_issuers = [
         aia_entry.access_location.value
         for aia_entry in aia_extension.value
-        if aia_entry.access_method == x509.AuthorityInformationAccessOID.CA_ISSUERS
+        if aia_entry.access_method == x509.OID_CA_ISSUERS
     ]
     ocsp_urls = [
         aia_entry.access_location.value
         for aia_entry in aia_extension.value
-        if aia_entry.access_method == x509.AuthorityInformationAccessOID.OCSP
+        if aia_entry.access_method == x509.OID_OCSP
     ]
 
     return AiaInformation(ca_issuers=ca_issuers, ocsp_urls=ocsp_urls)
+
+
+def extract_crl_urls(certificate: x509.Certificate) -> list[str]:
+    """Extract CRL distribution points from a certificate."""
+    try:
+        crl_extension = certificate.extensions.get_extension_for_class(
+            x509.CRLDistributionPoints,
+        )
+        return [
+            name.value
+            for distribution_point in crl_extension.value
+            for name in distribution_point.full_name
+            if isinstance(name, x509.UniformResourceIdentifier)
+        ]
+
+    except x509.ExtensionNotFound:
+        return []
 
 
 _PADDING_PKCS1V15_OIDS = (

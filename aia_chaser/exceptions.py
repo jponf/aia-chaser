@@ -203,6 +203,50 @@ class CertificateFingerprintError(CertificateVerificationError):
         self.trusted_fingerprint = trusted_fingerprint
 
 
+class CrlError(CertificateVerificationError):
+    """Base exception for CRL errors."""
+
+
+class CrlHttpError(CrlError):
+    """CRL failed due to an HTTP protocol error.
+
+    Args:
+        crl_url: CRL endpoint url.
+        http_status: HTTP status indicating the type of error.
+    """
+
+    def __init__(self, crl_url: str, http_status: int) -> None:
+        super().__init__(
+            f"HTTP failed with status code {http_status} when "
+            f" requesting CLR from {crl_url}",
+        )
+        self.crl_url = crl_url
+        self.http_status = http_status
+
+
+class CrlParseError(CrlError):
+    """Error parsing a certificate."""
+
+    def __init__(self, reasons: Sequence[str]) -> None:
+        super().__init__("could not parse certificate revocation list")
+        self.reasons = reasons
+
+
+class CrlRevokedError(CrlError):
+    """Certificate has been revoked by a CRL."""
+
+    def __init__(
+        self,
+        certificate: str,
+        revocation_date: datetime.datetime,
+        reason: str,
+    ) -> None:
+        msg = f"Certificate {certificate} revoked by CRL on {revocation_date}"
+        if reason:
+            msg += " [{reason}]"
+        super().__init__(msg)
+
+
 class OcspError(CertificateVerificationError):
     """Base exception for OCSP errors."""
 
