@@ -4,7 +4,7 @@ import collections
 import contextlib
 import ssl
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, NamedTuple
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -198,11 +198,8 @@ def extract_aia_information(
         does not fail, it fallbacks to returning empty sequences of data.
     """
     try:
-        aia_extension = cast(
-            "x509.Extension[x509.AuthorityInformationAccess]",
-            certificate.extensions.get_extension_for_oid(
-                x509.OID_AUTHORITY_INFORMATION_ACCESS,
-            ),
+        aia_extension = certificate.extensions.get_extension_for_class(
+            x509.AuthorityInformationAccess,
         )
     except x509.ExtensionNotFound:
         return AiaInformation([], [])

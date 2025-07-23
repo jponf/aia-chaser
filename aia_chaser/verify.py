@@ -63,6 +63,8 @@ class VerifyCertificatesConfig:
             root certificate from the chain is the same as the one
             found in the trusted certificates. Defaults to `hashes.SHA256`.
 
+        crl_enabled: Whether or not perform CRL validation.
+
         ocsp_enabled: Whether or not perform OCSP validation.
             Defaults to True.
         ocsp_hash_alg: Hash algorithm used to construct OCSP requests.
@@ -83,7 +85,7 @@ class VerifyCertificatesConfig:
         default_factory=hashes.SHA256,
     )
 
-    clr_enabled: bool = False
+    crl_enabled: bool = False
 
     ocsp_enabled: bool = False
     ocsp_hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -139,7 +141,7 @@ def verify_certificate_chain(
                 verification_time=config.verification_time,
             )
             verify_directly_issued_by(certificate=issued, issuer=issuer)
-            if config.clr_enabled:
+            if config.crl_enabled:
                 verify_crl_status(
                     certificate=issued,
                     verification_time=config.verification_time,
