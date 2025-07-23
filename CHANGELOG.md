@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.2.0] - 2025-07-23
+
+### 🚀 Features
+
+- Support parsing PKCS7 certificates
+- Add support for certificate revocation lists (CRL)
+
+### 🐛 Bug Fixes
+
+- Return in `verify` if iterator is empty
+
+
 ## [3.1.2] - 2025-03-06
 
 ### 🚀 Features
