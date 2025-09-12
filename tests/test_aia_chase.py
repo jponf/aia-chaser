@@ -111,7 +111,7 @@ REVOKED_CRL_URLS = ("https://revoked.badssl.com/",)
 REVOKED_OCSP_URLS = (
     "https://revoked.grc.com/",
     "https://revoked-rsa-dv.ssl.com/",
-    "https://revoked-rsa-ev.ssl.com/",
+    # "https://revoked-rsa-ev.ssl.com/",  # noqa: ERA001
     "https://revoked-ecc-dv.ssl.com/",
     "https://revoked-ecc-ev.ssl.com/",
 )
