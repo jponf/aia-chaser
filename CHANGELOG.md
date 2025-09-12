@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - Capture urlopen HTTP errors
 
+### 🧪 Testing
+
+- Remove URL that behaves erroneously
+
 ## [3.2.0] - 2025-07-23
 
 ### 🚀 Features
