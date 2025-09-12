@@ -3,12 +3,11 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import datetime
-import http
 import itertools
 import secrets
 import warnings
 from typing import TYPE_CHECKING
-from urllib.request import Request, urlopen
+from urllib.request import HTTPError, Request, urlopen
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
@@ -339,15 +338,16 @@ def _download_any_crl(crl_urls: Sequence[str]) -> x509.CertificateRevocationList
     last_idx = len(crl_urls) - 1
 
     for idx, url in enumerate(crl_urls):
-        with urlopen(url) as response:  # noqa: S310
-            if response.status != http.HTTPStatus.OK and idx == last_idx:
-                raise CrlHttpError(crl_url=url, http_status=response.status)
-            crl_data = response.read()
-            try:
+        try:
+            with urlopen(url) as response:  # noqa: S310
+                crl_data = response.read()
                 return _try_parse_crl(crl_data)
-            except CrlParseError:
-                if idx == last_idx:
-                    raise
+        except HTTPError as err:  # noqa: PERF203
+            if idx == last_idx:
+                raise CrlHttpError(crl_url=url, http_status=err.code) from None
+        except CrlParseError:
+            if idx == last_idx:
+                raise
 
     msg = "downloading CRL failed for unexpected reasons"
     raise RuntimeError(msg)
@@ -501,10 +501,11 @@ def _run_ocsp_request(
         method="POST",
     )
 
-    with urlopen(http_request) as response:  # noqa: S310
-        if response.status != http.HTTPStatus.OK:
-            raise OcspHttpError(ocsp_url=ocsp_url, http_status=response.status)
-        ocsp_response_data = response.read()
+    try:
+        with urlopen(http_request) as response:  # noqa: S310
+            ocsp_response_data = response.read()
+    except HTTPError as err:
+        raise OcspHttpError(ocsp_url=ocsp_url, http_status=err.code) from None
 
     ocsp_resp = ocsp.load_der_ocsp_response(ocsp_response_data)
     if ocsp_resp.response_status != ocsp.OCSPResponseStatus.SUCCESSFUL:
