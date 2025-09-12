@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.3.0] - 2025-09-12
+
+### 🐛 Bug Fixes
+
+- Capture urlopen HTTP errors
+
 ## [3.2.0] - 2025-07-23
 
 ### 🚀 Features
