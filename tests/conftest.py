@@ -12,6 +12,68 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPubl
 from cryptography.x509 import NameOID
 
 
+# Smaller subset for HTTP library integration tests
+TEST_URLS_SUBSET = (
+    "https://www.google.com",
+    "https://www.microsoft.com",
+    "https://www.github.com",
+    "https://www.kernel.org",
+)
+
+# Full test URLs used for AIA chase tests
+TEST_URLS = (
+    # Companies
+    "https://aliexpress.com",
+    "https://www.baidu.com",
+    "https://www.siemens.com",
+    "https://www.microsoft.com",
+    "https://www.amazon.com",
+    "https://www.google.com",
+    # News
+    "https://www.elperiodico.com",
+    "https://segre.com",
+    "https://www.nytimes.com",
+    # Governments
+    "https://administracion.gob.es",
+    "https://www.bundesregierung.de",
+    "https://www.elysee.fr",
+    "https://www.gov.uk",
+    "https://www.japan.go.jp",
+    "https://www.usa.gov",
+    # Universities
+    "https://udl.cat",
+    "https://www.upc.edu",
+    "https://www.mit.edu",
+    "https://www.berkeley.edu",
+    "https://en.snu.ac.kr",
+    # NGOs
+    "https://www.redcross.org",
+    "https://www2.cruzroja.es",
+    # Other
+    "https://www.kernel.org",
+    "https://www.fbi.gov",
+    "https://policia.es",
+    "https://mossos.gencat.cat",
+)
+
+EXPIRED_URLS = (
+    "https://expired.badssl.com/",
+    "https://expired-rsa-dv.ssl.com/",
+    "https://expired-rsa-ev.ssl.com/",
+    "https://expired-ecc-dv.ssl.com/",
+    "https://expired-ecc-ev.ssl.com/",
+)
+
+REVOKED_CRL_URLS = ("https://revoked.badssl.com/",)
+
+REVOKED_OCSP_URLS = (
+    "https://revoked.grc.com/",
+    "https://revoked-rsa-dv.ssl.com/",
+    "https://revoked-ecc-dv.ssl.com/",
+    "https://revoked-ecc-ev.ssl.com/",
+)
+
+
 def make_certificate(
     cert_key: RSAPublicKey,
     issuer_name: x509.Name,
