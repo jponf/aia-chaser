@@ -181,7 +181,13 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["D100", "D104", "D107", "D401"]
+ignore = [
+    "D100",
+    "D104",
+    "D107",
+    "D401",
+    "B905",  # zip() strict= parameter requires Python 3.10+
+]
 
 [tool.ruff.lint.flake8-quotes]
 inline-quotes = "double"
