@@ -56,16 +56,17 @@ response = urlopen(url, context=context)
   * Using [Requests: HTTP for Humans](https://docs.python-requests.org/en/latest/index.html):
 
 ```Python
+import tempfile
 import requests
 from aia_chaser import AiaChaser
+from aia_chaser.utils.cert_utils import certificates_to_pem
+
+url = "https://..."
 
 chaser = AiaChaser()
-url = "https://..."
-context = chaser.make_ssl_context_for_url(url)
-
-ca_data = chaser.fetch_ca_chain_for_url(url)
+ca_chain = chaser.fetch_ca_chain_for_url(url)
 with tempfile.NamedTemporaryFile("wt") as pem_file:
-    pem_file.write(ca_data.to_pem())
+    pem_file.write(certificates_to_pem(ca_chain))
     pem_file.flush()
     response = requests.get(url, verify=pem_file.name)
 ```
@@ -82,6 +83,36 @@ chaser = AiaChaser()
 context = chaser.make_ssl_context_for_url(url)
 with urllib3.PoolManager(ssl_context=context) as pool:
     respone = pool.request("GET", url)
+```
+
+  * Using [httpx](https://www.python-httpx.org/):
+
+```Python
+import httpx
+from aia_chaser import AiaChaser
+
+url = "https://..."
+
+chaser = AiaChaser()
+context = chaser.make_ssl_context_for_url(url)
+# Note: httpx does not follow redirects by default
+with httpx.Client(verify=context, follow_redirects=True) as client:
+    response = client.get(url)
+```
+
+  * Using [aiohttp](https://docs.aiohttp.org/) (async):
+
+```Python
+import aiohttp
+from aia_chaser import AiaChaser
+
+url = "https://..."
+
+chaser = AiaChaser()
+context = chaser.make_ssl_context_for_url(url)
+async with aiohttp.ClientSession() as session:
+    async with session.get(url, ssl=context) as response:
+        data = await response.text()
 ```
 
 ## Acknowledgments
