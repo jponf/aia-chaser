@@ -7,7 +7,7 @@ import http
 import socket
 import ssl
 import warnings
-from typing import TYPE_CHECKING, Callable, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
@@ -32,7 +32,7 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 
 __all__ = ["AiaChaser"]
@@ -67,7 +67,15 @@ class AiaChaser:
     ) -> None:
         trusted_cas = trusted_cas or []
 
-        self._context = context or ssl.SSLContext()
+        if context is None:
+            # Create context with disabled verification during handshake.
+            # This mirrors the old ssl.SSLContext() default behavior.
+            # Verification is done separately by aia-chaser after fetching.
+            self._context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            self._context.check_hostname = False
+            self._context.verify_mode = ssl.CERT_NONE
+        else:
+            self._context = context
 
         # Load trusted certificates
         ssl_trusted_cert = load_ssl_ca_certificates(
