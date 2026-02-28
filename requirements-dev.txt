@@ -50,6 +50,7 @@ rope==1.14.0 ; python_version >= "3.8" and python_full_version != "3.9.0" and py
 ruff==0.12.4 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
 six==1.17.0 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
 sortedcontainers==2.4.0 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
+tenacity==9.0.0 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
 toml==0.10.2 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
 tomli==2.2.1 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "3.11"
 tomlkit==0.13.3 ; python_version >= "3.8" and python_full_version != "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
