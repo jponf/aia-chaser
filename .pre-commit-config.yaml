@@ -58,7 +58,8 @@ repos:
       - id: pip-audit
         name: pip-audit
         description: "Audits Python environments and dependency trees for known vulnerabilities"
-        entry: poetry run pip-audit -r requirements.txt
+        # --disable-pip --no-deps: avoid creating a venv (ensurepip may crash on some systems)
+        entry: poetry run pip-audit -r requirements.txt --disable-pip --no-deps
         pass_filenames: false
         language: system
         files: requirements.txt
