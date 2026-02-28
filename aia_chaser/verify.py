@@ -43,6 +43,7 @@ from aia_chaser.utils.cert_utils import (
     extract_crl_urls,
     select_rsa_padding_for_signature_algorithm_oid,
 )
+from aia_chaser.utils.http_utils import urlopen_with_retry
 
 
 if TYPE_CHECKING:
@@ -502,7 +503,7 @@ def _run_ocsp_request(
     )
 
     try:
-        with urlopen(http_request) as response:  # noqa: S310
+        with urlopen_with_retry(http_request) as response:
             ocsp_response_data = response.read()
     except HTTPError as err:
         raise OcspHttpError(ocsp_url=ocsp_url, http_status=err.code) from None
