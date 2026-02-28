@@ -56,19 +56,16 @@ response = urlopen(url, context=context)
   * Using [Requests: HTTP for Humans](https://docs.python-requests.org/en/latest/index.html):
 
 ```Python
-import tempfile
 import requests
 from aia_chaser import AiaChaser
-from aia_chaser.utils.cert_utils import certificates_to_pem
+from aia_chaser.utils.cert_utils import temp_pem_file
 
 url = "https://..."
 
 chaser = AiaChaser()
 ca_chain = chaser.fetch_ca_chain_for_url(url)
-with tempfile.NamedTemporaryFile("wt") as pem_file:
-    pem_file.write(certificates_to_pem(ca_chain))
-    pem_file.flush()
-    response = requests.get(url, verify=pem_file.name)
+with temp_pem_file(ca_chain) as pem_path:
+    response = requests.get(url, verify=str(pem_path))
 ```
 
   * Using [urllib3](https://urllib3.readthedocs.io/en/stable/):
@@ -118,21 +115,18 @@ async with aiohttp.ClientSession() as session:
   * Using [PycURL](http://pycurl.io/):
 
 ```Python
-import tempfile
 import pycurl
 from aia_chaser import AiaChaser
-from aia_chaser.utils.cert_utils import certificates_to_pem
+from aia_chaser.utils.cert_utils import temp_pem_file
 
 url = "https://..."
 
 chaser = AiaChaser()
 ca_chain = chaser.fetch_ca_chain_for_url(url)
-with tempfile.NamedTemporaryFile("wt", suffix=".pem") as pem_file:
-    pem_file.write(certificates_to_pem(ca_chain))
-    pem_file.flush()
+with temp_pem_file(ca_chain) as pem_path:
     curl = pycurl.Curl()
     curl.setopt(pycurl.URL, url)
-    curl.setopt(pycurl.CAINFO, pem_file.name)
+    curl.setopt(pycurl.CAINFO, str(pem_path))
     curl.perform()
     curl.close()
 ```

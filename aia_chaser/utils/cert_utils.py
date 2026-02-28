@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import contextlib
 import ssl
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -12,7 +13,7 @@ from cryptography.hazmat.primitives.serialization import Encoding
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     from cryptography.hazmat.primitives import hashes
 
@@ -35,6 +36,40 @@ def certificates_to_pem(certificates: list[x509.Certificate]) -> str:
     return "\n".join(
         cert.public_bytes(Encoding.PEM).decode("ascii") for cert in certificates
     )
+
+
+@contextlib.contextmanager
+def temp_pem_file(certificates: Sequence[x509.Certificate]) -> Iterator[Path]:
+    """Context manager that writes certificates to a temporary PEM file.
+
+    Creates a temporary directory containing a PEM file with the provided
+    certificates. The file path is yielded for use with libraries that
+    require a file path (e.g., pycurl).
+
+    Note:
+        This uses a TemporaryDirectory instead of NamedTemporaryFile because
+        on Windows, a file opened by one process cannot be accessed by another
+        process. By writing to a file in a temp directory and closing it before
+        yielding, we ensure cross-platform compatibility.
+
+    Args:
+        certificates: Sequence of certificates to write to the PEM file.
+
+    Yields:
+        Path to the temporary PEM file.
+
+    Example:
+        ```python
+        chaser = AiaChaser()
+        ca_chain = chaser.fetch_ca_chain_for_url(url)
+        with temp_pem_file(ca_chain) as pem_path:
+            response = requests.get(url, verify=str(pem_path))
+        ```
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pem_path = Path(tmpdir) / "ca_chain.pem"
+        pem_path.write_text(certificates_to_pem(list(certificates)))
+        yield pem_path
 
 
 def load_ssl_ca_certificates(
