@@ -7,7 +7,7 @@ import http
 import socket
 import ssl
 import warnings
-from typing import TYPE_CHECKING, Callable, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.request import urlopen
 
 from cryptography import x509
@@ -32,7 +32,7 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 
 __all__ = ["AiaChaser"]
