@@ -67,7 +67,7 @@ class AiaChaser:
     ) -> None:
         trusted_cas = trusted_cas or []
 
-        self._context = context or ssl.SSLContext()
+        self._context = context or ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         # Load trusted certificates
         ssl_trusted_cert = load_ssl_ca_certificates(

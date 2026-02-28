@@ -82,7 +82,7 @@ def load_ssl_ca_certificates(
     Args:
         context: The SSL context used to get the default certificates.
             If not provided a default context is created with
-            `ssl.SSLContext()`.
+            `ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)`.
         force_load: Forcefully load default certificates into the SSL
             context. Certificates in CA path directory are not loaded
             unless they have been used at leas one by the SSL context.
@@ -93,8 +93,7 @@ def load_ssl_ca_certificates(
     Returns:
         A list with the CA certificates from `context`.
     """
-    context = context or ssl.SSLContext()
-    context = ssl.SSLContext()
+    context = context or ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     if force_load:
         force_load_default_verify_certificates(context)
 
