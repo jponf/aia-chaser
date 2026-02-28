@@ -1,5 +1,3 @@
-import ssl
-
 import pytest
 
 from aia_chaser import AiaChaser, VerifyCertificatesConfig
@@ -54,17 +52,7 @@ def test_aia_chase_url_expired(url_string: str) -> None:
 
 @pytest.mark.parametrize("url_string", EXPIRED_URLS)
 def test_aia_chase_url_ignore_expired(url_string: str) -> None:
-    # Create context that allows fetching expired certificates
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-
-    # Load trusted CAs separately since CERT_NONE context won't have them
-    from aia_chaser.utils.cert_utils import load_ssl_ca_certificates
-
-    trusted_cas = load_ssl_ca_certificates()
-
-    chaser = AiaChaser(context=context, trusted_cas=trusted_cas)
+    chaser = AiaChaser()
     chain = chaser.fetch_ca_chain_for_url(url_string=url_string, verify=False)
     assert len(chain) >= 1
 

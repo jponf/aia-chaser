@@ -67,7 +67,15 @@ class AiaChaser:
     ) -> None:
         trusted_cas = trusted_cas or []
 
-        self._context = context or ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        if context is None:
+            # Create context with disabled verification during handshake.
+            # This mirrors the old ssl.SSLContext() default behavior.
+            # Verification is done separately by aia-chaser after fetching.
+            self._context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            self._context.check_hostname = False
+            self._context.verify_mode = ssl.CERT_NONE
+        else:
+            self._context = context
 
         # Load trusted certificates
         ssl_trusted_cert = load_ssl_ca_certificates(
