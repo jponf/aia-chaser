@@ -115,6 +115,28 @@ async with aiohttp.ClientSession() as session:
         data = await response.text()
 ```
 
+  * Using [PycURL](http://pycurl.io/):
+
+```Python
+import tempfile
+import pycurl
+from aia_chaser import AiaChaser
+from aia_chaser.utils.cert_utils import certificates_to_pem
+
+url = "https://..."
+
+chaser = AiaChaser()
+ca_chain = chaser.fetch_ca_chain_for_url(url)
+with tempfile.NamedTemporaryFile("wt", suffix=".pem") as pem_file:
+    pem_file.write(certificates_to_pem(ca_chain))
+    pem_file.flush()
+    curl = pycurl.Curl()
+    curl.setopt(pycurl.URL, url)
+    curl.setopt(pycurl.CAINFO, pem_file.name)
+    curl.perform()
+    curl.close()
+```
+
 ## Acknowledgments
 
 * This project is based on [aia](https://github.com/danilobellini/aia).
