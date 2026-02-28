@@ -7,7 +7,7 @@ import itertools
 import secrets
 import warnings
 from typing import TYPE_CHECKING
-from urllib.request import HTTPError, Request, urlopen
+from urllib.request import HTTPError, Request
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
@@ -43,7 +43,7 @@ from aia_chaser.utils.cert_utils import (
     extract_crl_urls,
     select_rsa_padding_for_signature_algorithm_oid,
 )
-from aia_chaser.utils.http_utils import urlopen_with_retry
+from aia_chaser.utils.http_utils import RetryConfig, urlopen_with_retry
 
 
 if TYPE_CHECKING:
@@ -76,9 +76,12 @@ class VerifyCertificatesConfig:
             [`VerifyOcspConfig`][aia_chaser.verify.VerifyOcspConfig] for more
             details.
 
-
         verification_time: Timestamp used to verify certificate validity
             period. Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
+
+        retry_config: Configuration for HTTP retry behavior when downloading
+            CRLs or making OCSP requests. Defaults to 3 attempts with
+            exponential backoff.
     """
 
     fingerprint_hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -96,6 +99,10 @@ class VerifyCertificatesConfig:
 
     verification_time: datetime.datetime = dataclasses.field(
         default_factory=_get_default_verification_time,
+    )
+
+    retry_config: RetryConfig = dataclasses.field(
+        default_factory=RetryConfig,
     )
 
 
@@ -145,6 +152,7 @@ def verify_certificate_chain(
                 verify_crl_status(
                     certificate=issued,
                     verification_time=config.verification_time,
+                    retry_config=config.retry_config,
                 )
             if config.ocsp_enabled:
                 verify_ocsp_status(
@@ -155,6 +163,7 @@ def verify_certificate_chain(
                         ignore_unknown=config.ocsp_ignore_unknown,
                         verify_responder=config.ocsp_verify_responder,
                         trusted=trusted or {},
+                        retry_config=config.retry_config,
                     ),
                 )
 
@@ -297,6 +306,7 @@ def verify_certificate_validity_period(
 def verify_crl_status(
     certificate: x509.Certificate,
     verification_time: datetime.datetime | None,
+    retry_config: RetryConfig | None = None,
 ) -> None:
     """Verifies the status of a certificate using revocation lists.
 
@@ -305,11 +315,12 @@ def verify_crl_status(
             verified.
         verification_time: time at which the verification is being conducted.
             Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
+        retry_config: Configuration for HTTP retry behavior.
     """
     verification_time = verification_time or _get_default_verification_time()
     crl_urls = extract_crl_urls(certificate)
 
-    crl = _download_any_crl(crl_urls)
+    crl = _download_any_crl(crl_urls, retry_config=retry_config)
     next_update = _get_crl_next_update(crl)
     if next_update and verification_time > next_update:
         warnings.warn(
@@ -335,12 +346,15 @@ def verify_crl_status(
             )
 
 
-def _download_any_crl(crl_urls: Sequence[str]) -> x509.CertificateRevocationList:
+def _download_any_crl(
+    crl_urls: Sequence[str],
+    retry_config: RetryConfig | None = None,
+) -> x509.CertificateRevocationList:
     last_idx = len(crl_urls) - 1
 
     for idx, url in enumerate(crl_urls):
         try:
-            with urlopen(url) as response:  # noqa: S310
+            with urlopen_with_retry(url, retry_config=retry_config) as response:
                 crl_data = response.read()
                 return _try_parse_crl(crl_data)
         except HTTPError as err:  # noqa: PERF203
@@ -403,6 +417,9 @@ class VerifyOcspConfig:
         trusted: Trusted certificates mapping from subject (name) to
             certificate. If not provided a responder certificate
             verification may fail.
+
+        retry_config: Configuration for HTTP retry behavior when making
+            OCSP requests. Defaults to 3 attempts with exponential backoff.
     """
 
     hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -414,6 +431,10 @@ class VerifyOcspConfig:
 
     trusted: Mapping[x509.Name, x509.Certificate] = dataclasses.field(
         default_factory=dict,
+    )
+
+    retry_config: RetryConfig = dataclasses.field(
+        default_factory=RetryConfig,
     )
 
     def __post_init__(self) -> None:  # noqa: D105
@@ -503,7 +524,10 @@ def _run_ocsp_request(
     )
 
     try:
-        with urlopen_with_retry(http_request) as response:
+        with urlopen_with_retry(
+            http_request,
+            retry_config=config.retry_config,
+        ) as response:
             ocsp_response_data = response.read()
     except HTTPError as err:
         raise OcspHttpError(ocsp_url=ocsp_url, http_status=err.code) from None
