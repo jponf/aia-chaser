@@ -329,7 +329,7 @@ def verify_crl_status(
 
             raise CrlRevokedError(
                 certificate=certificate.subject.rfc4514_string(),
-                revocation_date=revoked_cert.revocation_date,
+                revocation_date=revoked_cert.revocation_date_utc,
                 reason=reason,
             )
 
