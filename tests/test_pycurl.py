@@ -25,6 +25,7 @@ def test_pycurl_with_pem_file(url_string: str) -> None:
         curl.setopt(pycurl.URL, url_string)
         curl.setopt(pycurl.CAINFO, pem_file.name)
         curl.setopt(pycurl.FOLLOWLOCATION, True)  # noqa: FBT003
+        curl.setopt(pycurl.USERAGENT, "aia-chaser-test/1.0")
         curl.setopt(pycurl.WRITEFUNCTION, lambda _: None)  # Discard response body
         curl.perform()
 
