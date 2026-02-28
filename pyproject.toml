@@ -48,8 +48,8 @@ build-backend = "poetry.masonry.api"
 [tool.poetry_bumpversion.file."aia_chaser/__init__.py"]
 
 [tool.poetry.dependencies]
-python = "^3.8"
-cryptography = ">=40.0"
+python = ">=3.8,!=3.9.0,!=3.9.1,<4.0"
+cryptography = ">=44.0.1"
 
 
 [tool.poetry.group.dev]
@@ -83,6 +83,11 @@ pytest-cov = "^4.1.0"
 pytest-randomly = "^3.15.0" # random shuffle tests
 xdoctest = "^1.1.2"
 faker = "^22.4.0"
+pytest-asyncio = "^0.21"
+requests = "^2.31"
+urllib3 = "^1.26"
+httpx = "^0.24"
+aiohttp = "^3.8"
 
 [tool.poetry.group.docs]
 optional = true
@@ -141,6 +146,7 @@ addopts = [
 console_output_style = "count"
 markers = ""
 filterwarnings = ["ignore::DeprecationWarning"]
+asyncio_mode = "auto"
 
 
 [tool.bumpversion]
