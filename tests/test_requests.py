@@ -20,7 +20,6 @@ def test_requests_with_pem_file(url_string: str) -> None:
     with tempfile.NamedTemporaryFile(
         "wt",
         suffix=".pem",
-        delete=False,
     ) as pem_file:
         pem_file.write(certificates_to_pem(ca_chain))
         pem_file.flush()
