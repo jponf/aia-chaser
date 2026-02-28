@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.0] - 2026-02-28
+
+### 🚀 Features
+
+- Add retry support for OCSP requests
+- Expose retry configuration in verification configs
+- Add temp_pem_file utility for Windows compatibility
+
+### 🐛 Bug Fixes
+
+- Upgrade cryptography to fix vulnerabilities
+- Update httpx version
+- Use revocation_date_utc to avoid deprecation warning
+- Add User-Agent header to pycurl test for CI compatibility
+- Use ssl.PROTOCOL_TLS_CLIENT to avoid deprecation warning
+- Use PROTOCOL_TLS_CLIENT with disabled handshake verification
+
+### 📚 Documentation
+
+- Fix requests example and add httpx, aiohttp and pycurl examples
+
+### 🧪 Testing
+
+- Add HTTP library integration tests
+
+### ⚙️ Miscellaneous Tasks
+
+- Add code coverage reporting to pytest
+- Improve CI reliability and reduce matrix size
+
 ## [3.3.0] - 2025-09-12
 
 ### 🐛 Bug Fixes
