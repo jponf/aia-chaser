@@ -140,7 +140,7 @@ def verify_certificate_chain(
 
     chain_index = 0
     try:
-        for issued, issuer in zip(certificates, ca_certificates, strict=False):
+        for issued, issuer in zip(certificates, ca_certificates):
             root_cert = issuer
 
             verify_certificate_validity_period(
