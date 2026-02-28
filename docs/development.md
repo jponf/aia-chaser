@@ -1,42 +1,83 @@
 # Development
 
-First of all, you must have *Make* and one of the following tool groups
-installed and on your `$PATH`:
+## Prerequisites
 
- * [Pyenv](https://github.com/pyenv/pyenv)
- * [Poetry](https://python-poetry.org/docs/#installation) (version 2 or newer)
+To set up the development environment for this project you need the following tools:
 
- or
+  * Python >= 3.8 (excluding 3.9.0 and 3.9.1)
+  * Git
+  * Make
+  * [Poetry](https://python-poetry.org/docs/#installation) (version 2 or newer)
 
- * [Mise](https://mise.jdx.dev/)
+Optionally, you can use one of the following tools to manage Python versions:
 
-Then, open a terminal on the project's directory and run:
+  * [Pyenv](https://github.com/pyenv/pyenv)
+  * [Mise](https://mise.jdx.dev/)
 
-```console
-sh scripts/setup_dev_env
+## Setup
+
+With the tools already installed on your device, first clone the repository:
+
+```shell
+git clone https://github.com/jponf/aia-chaser.git
+cd aia-chaser
 ```
 
-Once the script finishes running the basic tools should be ready, proceed with
+Then, set up the virtual environment and install dependencies:
 
+```shell
+poetry install --with dev --with test
 ```
-make init
+
+Additionally, if you plan to create new commits, install the pre-commit hooks.
+These will verify your files before committing them:
+
+```shell
+poetry run pre-commit install
 ```
 
-this will run some additional tests, create the virtual environment, install
-the project dependencies and configure git hooks.
+Happy coding!
 
+## Common Tasks
 
-## Coding Guideline
+### Run Tests
 
-There are many details to keep track of to guarantee that all code follows the
-same style, for that we have tools. This project uses *black* and *ruff* to
-verify that all code adheres to the same rules. Additionally, pre-commit hooks
-and CI pipeline steps are in place to run them automatically.
+```shell
+poetry run pytest
+```
 
-Moreover, we like to add types to or code and check it with *mypy* (there are
-hooks for it too). We like it because *typing* your Python code helps catch some
-potential bugs, which may go unnoticed until that code is executed, and it also
-helps other developers use the package by providing type-hinting in modern editors.
+With coverage:
 
-As always tools can only get so far, these tools allow disabling rules on a per-file
-and per-line basis, just be mindful and do so when strictly necessary.
+```shell
+poetry run pytest --cov=aia_chaser --cov-report=term-missing
+```
+
+### Run Linters
+
+```shell
+poetry run ruff check .
+poetry run mypy .
+```
+
+### Build Documentation
+
+```shell
+poetry install --with docs
+poetry run mkdocs serve
+```
+
+## Coding Guidelines
+
+This project uses automated tools to enforce consistent code style:
+
+| Tool | Purpose |
+|------|---------|
+| [Black](https://github.com/psf/black) | Code formatting |
+| [isort](https://pycqa.github.io/isort/) | Import sorting |
+| [Ruff](https://github.com/astral-sh/ruff) | Linting |
+| [mypy](https://mypy-lang.org/) | Static type checking |
+
+Pre-commit hooks and CI pipelines run these tools automatically. Type hints are
+encouraged as they help catch bugs early and improve IDE support.
+
+Tools can be disabled per-file or per-line when necessary, but use this sparingly.
