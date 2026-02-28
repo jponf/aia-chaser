@@ -42,6 +42,6 @@ jobs:
         run: poetry run ruff check .
       - name: Type check with mypy
         shell: bash
-        run: poetry run mypy .
+        run: poetry run mypy --install-types --non-interactive .
       - name: Test with pytest and coverage
         run: poetry run pytest -s --cov=aia_chaser --cov-report=term-missing
