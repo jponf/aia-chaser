@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.4.1] - 2026-04-26
+
+### 🚀 Features
+
+- Export AiaChaserError and AiaChaserWarning from top-level package
+
+### 🐛 Bug Fixes
+
+- Use 'poetry-core' as build backend
+- Skip unparsable trust-store certs and suppress CryptographyDeprecationWarning
+
+### 📚 Documentation
+
+- Add contributing guide
+
+### 🧪 Testing
+
+- Add test data directory and cert_utils tests
+
+### 🏗️ Build
+
+- Add git-cliff config and document changelog generation
+
 ## [3.4.0] - 2026-02-28
 
 ### 🚀 Features
