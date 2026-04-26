@@ -28,13 +28,22 @@ poetry version major
 
 ## Release Process
 
-1. **Update changelog** - Add release notes to `docs/changelog.md`
+1. **Update changelog** - Generate the changelog for the new version using
+   [git-cliff](https://git-cliff.org/) and prepend it to `CHANGELOG.md`:
+
+   ```shell
+   git cliff --tag vX.Y.Z --unreleased --prepend CHANGELOG.md
+   ```
+
+   Review the result and remove any noise (e.g. trivial chore commits). The
+   output is driven by `cliff.toml` and groups commits by conventional commit
+   type automatically.
 
 2. **Bump version** - Run `poetry version <patch|minor|major>`
 
 3. **Commit changes** - Create a commit with the version bump:
    ```shell
-   git add pyproject.toml aia_chaser/__init__.py docs/changelog.md
+   git add pyproject.toml aia_chaser/__init__.py CHANGELOG.md
    git commit -m "chore: Bump version to X.Y.Z"
    ```
 
