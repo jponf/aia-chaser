@@ -10,6 +10,10 @@ if TYPE_CHECKING:
     from cryptography.x509.ocsp import OCSPResponseStatus
 
 
+class AiaChaserWarning(UserWarning):
+    """Base warning for aia_chaser warnings."""
+
+
 class AiaChaserError(Exception):
     """Base exception for aia_chaser errors."""
 
