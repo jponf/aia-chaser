@@ -23,7 +23,7 @@ theme:
   logo: images/aia-chaser-circle.png
   # static_templates:
   #   - 404.html
-  features:
+  # features:
     # - navigation.tabs
     # - toc.integrate
   palette:
