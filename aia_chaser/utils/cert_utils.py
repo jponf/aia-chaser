@@ -4,12 +4,16 @@ import collections
 import contextlib
 import ssl
 import tempfile
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.utils import CryptographyDeprecationWarning
+
+from aia_chaser.exceptions import AiaChaserWarning
 
 
 if TYPE_CHECKING:
@@ -72,6 +76,20 @@ def temp_pem_file(certificates: Sequence[x509.Certificate]) -> Iterator[Path]:
         yield pem_path
 
 
+def _try_load_der_certificate(der: bytes) -> x509.Certificate | None:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", CryptographyDeprecationWarning)
+            return x509.load_der_x509_certificate(der)
+    except Exception as e:  # noqa: BLE001
+        warnings.warn(
+            f"skipping trust-store certificate that failed to parse: {e}",
+            category=AiaChaserWarning,
+            stacklevel=3,
+        )
+        return None
+
+
 def load_ssl_ca_certificates(
     context: ssl.SSLContext | None = None,
     *,
@@ -99,7 +117,11 @@ def load_ssl_ca_certificates(
 
     # Load trusted certificates
     trusted_der = context.get_ca_certs(True)  # noqa: FBT003
-    return list(map(x509.load_der_x509_certificate, trusted_der))
+    return [
+        cert
+        for der in trusted_der
+        if (cert := _try_load_der_certificate(der)) is not None
+    ]
 
 
 def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
@@ -108,7 +130,7 @@ def force_load_default_verify_certificates(context: ssl.SSLContext) -> None:
     Certificates in CA path directory are not loaded unless they
     have been used at leas one by the SSL context.
 
-    This function loads all files located CA path, except those
+    This function loads all files located in CA path, except those
     that are considered hidden files (start with a '.').
 
     Args:
