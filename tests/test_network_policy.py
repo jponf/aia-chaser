@@ -7,10 +7,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
-from aia_chaser.chaser import (
-    _AiaRedirectHandler,
-    _validate_url_destination,
-)
+from aia_chaser.chaser import _AiaRedirectHandler, _validate_url_destination
 from aia_chaser.utils.url import is_global_address, resolve_global_host
 
 
@@ -156,7 +153,9 @@ def test_default_private_ip_option_preserves_aia_downloads(
     )
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
-    assert chaser._download_certificate("http://internal.example/issuer.crt")  # noqa: SLF001
+    assert chaser._download_certificate(
+        "http://internal.example/issuer.crt"
+    )  # noqa: SLF001
     opener.open.assert_called_once()
 
     chaser._download_certificate.cache_clear()  # noqa: SLF001

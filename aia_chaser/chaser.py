@@ -28,14 +28,14 @@ from aia_chaser.utils.cert_utils import (
     extract_aia_information,
     load_ssl_ca_certificates,
 )
-from aia_chaser.utils.url import resolve_global_host, extract_host_port_from_url
+from aia_chaser.utils.url import extract_host_port_from_url, resolve_global_host
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from email.message import Message
-    from typing import BinaryIO
+    from http.client import HTTPMessage
+    from typing import IO
     from urllib.request import Request
 
 
@@ -50,10 +50,10 @@ class _AiaRedirectHandler(HTTPRedirectHandler):
     def redirect_request(  # noqa: PLR0913, PLR0917
         self,
         req: Request,
-        fp: BinaryIO,
+        fp: IO[bytes],
         code: int,
         msg: str,
-        headers: Message,
+        headers: HTTPMessage,
         newurl: str,
     ) -> Request | None:
         if not self.allow_private_ip:

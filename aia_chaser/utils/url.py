@@ -47,7 +47,7 @@ def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
     return url_split.netloc, port
 
 
-def is_global_address(value: Union[int, str]) -> bool:
+def is_global_address(value: int | str) -> bool:
     """Return whether an IP address is globally routable.
 
     IPv4 addresses embedded in IPv6 transition or NAT64 addresses are checked
@@ -75,7 +75,15 @@ def is_global_address(value: Union[int, str]) -> bool:
 def resolve_global_host(
     host: str,
     port: int | None = None,
-) -> list[tuple[int, int, int, str, tuple[str, int] | tuple[str, int, int, int]]]:
+) -> list[
+    tuple[
+        socket.AddressFamily,
+        socket.SocketKind,
+        int,
+        str,
+        tuple[str, int] | tuple[str, int, int, int] | tuple[int, bytes],
+    ]
+]:
     """Resolve a host and ensure every returned address is globally routable.
 
     Args:
@@ -95,7 +103,10 @@ def resolve_global_host(
         raise socket.gaierror(socket.EAI_NONAME, host)
 
     for address_info in addresses:
-        address = address_info[4][0]
+        address = str(address_info[4][0])
         if not is_global_address(address):
-            raise NonGlobalAddressError(host=host, address=address)
+            raise NonGlobalAddressError(
+                host=host,
+                address=address,
+            )
     return addresses
