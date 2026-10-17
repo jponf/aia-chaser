@@ -47,7 +47,7 @@ def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
     return url_split.netloc, port
 
 
-def is_global_address(value: str) -> bool:
+def is_global_address(value: Union[int, str]) -> bool:
     """Return whether an IP address is globally routable.
 
     IPv4 addresses embedded in IPv6 transition or NAT64 addresses are checked
