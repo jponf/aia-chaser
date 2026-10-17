@@ -8,7 +8,8 @@ import socket
 import ssl
 import warnings
 from typing import TYPE_CHECKING, NamedTuple
-from urllib.request import urlopen
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, build_opener
 
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
@@ -27,15 +28,37 @@ from aia_chaser.utils.cert_utils import (
     extract_aia_information,
     load_ssl_ca_certificates,
 )
-from aia_chaser.utils.url import extract_host_port_from_url
+from aia_chaser.utils.url import resolve_global_host, extract_host_port_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
+    from email.message import Message
+    from typing import BinaryIO
+    from urllib.request import Request
 
 
 __all__ = ["AiaChaser"]
+
+
+class _AiaRedirectHandler(HTTPRedirectHandler):
+    def __init__(self, *, allow_private_ip: bool) -> None:
+        self.allow_private_ip = allow_private_ip
+        super().__init__()
+
+    def redirect_request(  # noqa: PLR0913, PLR0917
+        self,
+        req: Request,
+        fp: BinaryIO,
+        code: int,
+        msg: str,
+        headers: Message,
+        newurl: str,
+    ) -> Request | None:
+        if not self.allow_private_ip:
+            _validate_url_destination(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class AiaChaser:
@@ -58,13 +81,19 @@ class AiaChaser:
             root CAs. If not given a new SSLContext is created with the
             default certificates.
         trusted_ca: Additional trusted CA certificates.
+        allow_private_ip: Whether non-global IP addresses may be used for
+            the initial connection and AIA certificate downloads. Defaults
+            to True for backwards compatibility.
     """
 
     def __init__(
         self,
         context: ssl.SSLContext | None = None,
         trusted_cas: Sequence[x509.Certificate] | None = None,
+        *,
+        allow_private_ip: bool = True,
     ) -> None:
+        self.allow_private_ip = allow_private_ip
         trusted_cas = trusted_cas or []
 
         if context is None:
@@ -156,7 +185,12 @@ class AiaChaser:
                 yield self._trusted[cert_info.issuer]
                 break
 
-            to_process.extend(_try_download_certificate(cert_info.aia_ca_issuers))
+            to_process.extend(
+                _try_download_certificate(
+                    cert_info.aia_ca_issuers,
+                    allow_private_ip=self.allow_private_ip,
+                ),
+            )
 
     def aia_chase(
         self,
@@ -192,9 +226,15 @@ class AiaChaser:
         Raises:
             MissingPeerCertificateError: If it is not possible to retrieve
                 the certificate of the `host`.
+            NonGlobalAddressError: If `allow_private_ip` is False and the host
+                resolves to a non-global IP address.
         """
         with contextlib.ExitStack() as ctx:
-            sock = ctx.enter_context(socket.create_connection((host, port)))
+            if self.allow_private_ip:
+                sock = socket.create_connection((host, port))
+            else:
+                sock = _create_global_connection(host, port)
+            sock = ctx.enter_context(sock)
             s_sock = ctx.enter_context(
                 self._context.wrap_socket(
                     sock,
@@ -447,7 +487,11 @@ class AiaChaser:
         context.load_verify_locations(cadata=certificates_to_der(certificates))
 
 
-def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
+def _try_download_certificate(
+    urls: Sequence[str],
+    *,
+    allow_private_ip: bool = True,
+) -> list[x509.Certificate]:
     http_urls = [url for url in urls if url.lower().startswith(("http:", "https:"))]
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
@@ -455,8 +499,11 @@ def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
     errors = []
     for http_url in http_urls:
         try:
-            return _download_certificate(http_url)
-        except (  # noqa: PERF203
+            return _download_certificate(
+                http_url,
+                allow_private_ip=allow_private_ip,
+            )
+        except (
             CertificateDownloadError,
             CertificateParseError,
         ) as err:
@@ -465,8 +512,41 @@ def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
     raise AiaChaseExhaustedError(errors=errors)
 
 
+def _create_global_connection(host: str, port: int) -> socket.socket:
+    addresses = resolve_global_host(host, port)
+    connection_errors: list[OSError] = []
+    for family, socktype, protocol, _, sockaddr in addresses:
+        sock = socket.socket(family, socktype, protocol)
+        try:
+            sock.connect(sockaddr)
+        except OSError as err:
+            sock.close()
+            connection_errors.append(err)
+        else:
+            return sock
+
+    if connection_errors:
+        raise connection_errors[-1]
+    raise socket.gaierror(socket.EAI_NONAME, host)
+
+
+def _validate_url_destination(url_string: str) -> None:
+    host, port = extract_host_port_from_url(url_string)
+    parsed_url = urlsplit(url_string)
+    if parsed_url.scheme.lower() not in ("http", "https") or not host:
+        raise CertificateDownloadError(
+            message=f"invalid HTTP URL: {url_string}",
+            url_string=url_string,
+        )
+    resolve_global_host(host, port)
+
+
 @functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
-def _download_certificate(url_string: str) -> list[x509.Certificate]:
+def _download_certificate(
+    url_string: str,
+    *,
+    allow_private_ip: bool = True,
+) -> list[x509.Certificate]:
     if url_string.startswith("https:"):
         warnings.warn(
             "Trying to download an intermediate CA certificate using HTTPS",
@@ -479,7 +559,11 @@ def _download_certificate(url_string: str) -> list[x509.Certificate]:
             url_string=url_string,
         )
 
-    with urlopen(  # noqa: S310
+    if not allow_private_ip:
+        _validate_url_destination(url_string)
+
+    opener = build_opener(_AiaRedirectHandler(allow_private_ip=allow_private_ip))
+    with opener.open(
         url_string,
         timeout=DEFAULT_URLOPEN_TIMEOUT,
     ) as response:

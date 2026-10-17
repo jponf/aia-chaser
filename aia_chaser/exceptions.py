@@ -18,6 +18,20 @@ class AiaChaserError(Exception):
     """Base exception for aia_chaser errors."""
 
 
+class NonGlobalAddressError(AiaChaserError):
+    """A destination resolved to an address that is not globally routable.
+
+    Args:
+        host: Hostname or IP address that was resolved.
+        address: Non-global address returned by the resolver.
+    """
+
+    def __init__(self, host: str, address: str) -> None:
+        super().__init__(f"host {host} resolved to non-global address {address}")
+        self.host = host
+        self.address = address
+
+
 class MissingPeerCertificateError(AiaChaserError):
     """There is no certificate for the peer on the other end."""
 
