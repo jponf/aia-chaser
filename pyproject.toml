@@ -112,6 +112,7 @@ line-length = 88
 [tool.isort]
 profile = "black"
 lines_after_imports = 2
+skip_glob = [".poetry/**"]
 
 [tool.mypy]
 cache_dir = ".cache/mypy/"
@@ -186,7 +187,7 @@ ignore = [
     "D104",
     "D107",
     "D401",
-    "B905",  # zip() strict= parameter requires Python 3.10+
+    "B905", # zip() strict= parameter requires Python 3.10+
 ]
 
 [tool.ruff.lint.flake8-quotes]
