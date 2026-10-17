@@ -42,19 +42,40 @@ jobs:
             python-version: "3.13"
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python for Poetry
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
       - name: Install Poetry
         shell: bash
         run: |
           pip install --user pipx
           pipx ensurepath
           pipx install "poetry>=2"
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         shell: bash
         run: |
           poetry install --with dev --with test
+      - name: Verify Poetry Python
+        shell: bash
+        env:
+          EXPECTED_PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          poetry env info --executable
+          poetry run python - <<'PY'
+          import os
+          import sys
+
+          expected = tuple(
+              map(int, os.environ["EXPECTED_PYTHON_VERSION"].split(".")),
+          )
+          assert sys.version_info[:2] == expected, (
+              f"Expected Python {expected}, got {sys.version}"
+          )
+          PY
       - name: Test with pytest and coverage
         run: poetry run pytest -s --cov=aia_chaser --cov-report=term-missing
