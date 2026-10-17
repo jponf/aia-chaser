@@ -1,0 +1,74 @@
+name: Python Lint and Tests
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_call:
+
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+      - name: Install dependencies
+        run: poetry install --with dev --with test
+
+      - name: Check formatting with black
+        run: poetry run black --check .
+      - name: Check imports with isort
+        run: poetry run isort --check-only .
+      - name: Type check with mypy
+        run: poetry run mypy --install-types --non-interactive .
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+      - name: Install dependencies
+        run: poetry install --with dev --with test
+      - name: Test with pytest
+        run: poetry run pytest -s --cov=aia_chaser --cov-report=term-missing
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+      - name: Install dependencies
+        run: poetry install --with dev --with test
+      - name: Audit dependencies
+        run: poetry run pip-audit -r requirements.txt --disable-pip --no-deps
