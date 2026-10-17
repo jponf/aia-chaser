@@ -1,16 +1,18 @@
-name: Python CI
+name: Python Main CI
 
 on:
   push:
-    branches: ['**']
-  pull_request:
-  workflow_call:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
+  checks:
+    uses: ./.github/workflows/python-lint.yml
+
   build:
+    needs: checks
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -54,11 +56,5 @@ jobs:
         shell: bash
         run: |
           poetry install --with dev --with test
-      - name: Lint with ruff
-        shell: bash
-        run: poetry run ruff check .
-      - name: Type check with mypy
-        shell: bash
-        run: poetry run mypy --install-types --non-interactive .
       - name: Test with pytest and coverage
         run: poetry run pytest -s --cov=aia_chaser --cov-report=term-missing
