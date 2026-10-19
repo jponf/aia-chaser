@@ -9,11 +9,7 @@ from urllib.request import ProxyHandler, Request
 import pytest
 
 from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
-from aia_chaser.chaser import (
-    _AiaHTTPHandler,
-    _AiaHTTPSHandler,
-    _AiaRedirectHandler,
-)
+from aia_chaser.chaser import _AiaHTTPHandler, _AiaHTTPSHandler, _AiaRedirectHandler
 from aia_chaser.exceptions import CertificateDownloadError
 from aia_chaser.utils.url import (
     extract_host_port_from_url,
