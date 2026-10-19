@@ -2,19 +2,34 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import errno
 import functools
 import http
+import http.client
 import socket
 import ssl
+import sys
 import warnings
 from typing import TYPE_CHECKING, NamedTuple
-from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, build_opener
+from urllib.error import URLError
+from urllib.request import (
+    BaseHandler,
+    HTTPHandler,
+    HTTPRedirectHandler,
+    HTTPSHandler,
+    OpenerDirector,
+    ProxyHandler,
+    build_opener,
+)
 
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
 
-from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
+from aia_chaser.constants import (
+    DEFAULT_URLOPEN_TIMEOUT,
+    DOWNLOAD_CACHE_SIZE,
+    SocketAddressInfo,
+)
 from aia_chaser.exceptions import (
     AiaChaseExhaustedError,
     CertificateDownloadError,
@@ -31,10 +46,12 @@ from aia_chaser.utils.cert_utils import (
 from aia_chaser.utils.url import extract_host_port_from_url, resolve_global_host
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
+from .utils.http_utils import validate_and_get_http_host_port
+
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from http.client import HTTPMessage
+    from http.client import HTTPMessage, HTTPResponse
     from typing import IO
     from urllib.request import Request
 
@@ -57,8 +74,139 @@ class _AiaRedirectHandler(HTTPRedirectHandler):
         newurl: str,
     ) -> Request | None:
         if not self.allow_private_ip:
-            _validate_url_destination(newurl)
+            validate_and_get_http_host_port(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _create_pinned_socket(
+    addresses: Sequence[SocketAddressInfo],
+    timeout: float | None,
+    source_address: tuple[str, int] | None,
+) -> socket.socket:
+    connection_errors: list[OSError] = []
+    for family, socktype, protocol, _, sockaddr in addresses:
+        sock = socket.socket(family, socktype, protocol)
+        try:
+            sock.settimeout(timeout)
+            if source_address is not None:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError as err:
+                if err.errno != errno.ENOPROTOOPT:
+                    raise
+        except OSError as err:
+            sock.close()
+            connection_errors.append(err)
+        else:
+            return sock
+
+    if connection_errors:
+        raise connection_errors[-1]
+    raise socket.gaierror(socket.EAI_NONAME, "no addresses to connect to")
+
+
+class _PinnedConnectionMixin:
+    host: str
+    port: int
+    timeout: float | None
+    sock: socket.socket | None
+    _addresses: Sequence[SocketAddressInfo]
+    _pinned_source_address: tuple[str, int] | None
+
+    def _init_pinned(
+        self,
+        addresses: Sequence[SocketAddressInfo],
+        source_address: tuple[str, int] | None = None,
+    ) -> None:
+        self._addresses = addresses
+        self._pinned_source_address = source_address
+
+    def _connect_pinned_socket(self) -> socket.socket:
+        sys.audit("http.client.connect", self, self.host, self.port)
+        return _create_pinned_socket(
+            self._addresses,
+            self.timeout,
+            self._pinned_source_address,
+        )
+
+    def connect(self) -> None:
+        self.sock = self._connect_pinned_socket()
+
+
+class _PinnedHTTPConnection(_PinnedConnectionMixin, http.client.HTTPConnection):
+    """HTTPConnection pinned to pre-resolved addresses."""
+
+    def __init__(
+        self,
+        host: str,
+        *,
+        addresses: Sequence[SocketAddressInfo],
+        timeout: float | None = None,
+        source_address: tuple[str, int] | None = None,
+    ) -> None:
+        super().__init__(
+            host,
+            timeout=timeout,
+            source_address=source_address,
+        )
+        self._init_pinned(addresses, source_address)
+
+
+class _PinnedHTTPSConnection(_PinnedConnectionMixin, http.client.HTTPSConnection):
+    """HTTPSConnection pinned to pre-resolved addresses."""
+
+    def __init__(
+        self,
+        host: str,
+        *,
+        addresses: Sequence[SocketAddressInfo],
+        timeout: float | None = None,
+        source_address: tuple[str, int] | None = None,
+        context: ssl.SSLContext,
+    ) -> None:
+        super().__init__(
+            host,
+            timeout=timeout,
+            source_address=source_address,
+            context=context,
+        )
+        self._init_pinned(addresses, source_address)
+        self._pinned_context = context
+
+    def connect(self) -> None:
+        self.sock = self._pinned_context.wrap_socket(
+            self._connect_pinned_socket(),
+            server_hostname=self.host,
+        )
+
+
+class _AiaHTTPHandler(HTTPHandler):
+    def http_open(self, req: Request) -> HTTPResponse:
+        host, port = validate_and_get_http_host_port(req.full_url)
+        addresses = resolve_global_host(host, port)
+        http_class = functools.partial(
+            _PinnedHTTPConnection,
+            addresses=addresses,
+        )
+        return self.do_open(http_class, req)
+
+
+class _AiaHTTPSHandler(HTTPSHandler):
+    def __init__(self) -> None:
+        context = ssl._create_default_https_context()  # noqa: SLF001
+        super().__init__(context=context)
+        self._aia_context = context
+
+    def https_open(self, req: Request) -> HTTPResponse:
+        host, port = validate_and_get_http_host_port(req.full_url)
+        addresses = resolve_global_host(host, port)
+        http_class = functools.partial(
+            _PinnedHTTPSConnection,
+            addresses=addresses,
+        )
+        return self.do_open(http_class, req, context=self._aia_context)
 
 
 class AiaChaser:
@@ -514,31 +662,29 @@ def _try_download_certificate(
 
 def _create_global_connection(host: str, port: int) -> socket.socket:
     addresses = resolve_global_host(host, port)
-    connection_errors: list[OSError] = []
-    for family, socktype, protocol, _, sockaddr in addresses:
-        sock = socket.socket(family, socktype, protocol)
-        try:
-            sock.connect(sockaddr)
-        except OSError as err:
-            sock.close()
-            connection_errors.append(err)
-        else:
-            return sock
-
-    if connection_errors:
-        raise connection_errors[-1]
-    raise socket.gaierror(socket.EAI_NONAME, host)
+    return _create_pinned_socket(addresses, timeout=None, source_address=None)
 
 
-def _validate_url_destination(url_string: str) -> None:
-    host, port = extract_host_port_from_url(url_string)
-    parsed_url = urlsplit(url_string)
-    if parsed_url.scheme.lower() not in ("http", "https") or not host:
-        raise CertificateDownloadError(
-            message=f"invalid HTTP URL: {url_string}",
-            url_string=url_string,
-        )
-    resolve_global_host(host, port)
+def _build_certificate_opener(
+    *,
+    allow_private_ip: bool = True,
+) -> OpenerDirector:
+    """Build a urllib opener configured for certificate downloads.
+
+    Args:
+        allow_private_ip: Whether non-global IP addresses may be used.
+
+    Returns:
+        An OpenerDirector configured with redirect, IP validation,
+        and empty proxy handlers.
+    """
+    handlers: list[BaseHandler] = [
+        _AiaRedirectHandler(allow_private_ip=allow_private_ip),
+        ProxyHandler({}),
+    ]
+    if not allow_private_ip:
+        handlers.extend((_AiaHTTPHandler(), _AiaHTTPSHandler()))
+    return build_opener(*handlers)
 
 
 @functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
@@ -547,6 +693,19 @@ def _download_certificate(
     *,
     allow_private_ip: bool = True,
 ) -> list[x509.Certificate]:
+    """Download and parse X.509 certificates from an AIA URL.
+
+    Args:
+        url_string: URL pointing to the certificate to download.
+        allow_private_ip: Whether non-global IP addresses may be used.
+
+    Returns:
+        A list of parsed X.509 certificates.
+
+    Raises:
+        CertificateDownloadError: If the URL scheme is unsupported,
+            the download fails, or the certificate data cannot be parsed.
+    """
     if url_string.startswith("https:"):
         warnings.warn(
             "Trying to download an intermediate CA certificate using HTTPS",
@@ -559,27 +718,33 @@ def _download_certificate(
             url_string=url_string,
         )
 
-    if not allow_private_ip:
-        _validate_url_destination(url_string)
+    opener = _build_certificate_opener(
+        allow_private_ip=allow_private_ip,
+    )
+    try:
+        with opener.open(
+            url_string,
+            timeout=DEFAULT_URLOPEN_TIMEOUT,
+        ) as response:
+            if response.status != http.HTTPStatus.OK:
+                raise CertificateDownloadError(
+                    message=f"could not download {url_string}",
+                    url_string=url_string,
+                )
+            content = response.read()
+    except (URLError, http.client.HTTPException, OSError) as err:
+        raise CertificateDownloadError(
+            message=f"could not download {url_string}: {err}",
+            url_string=url_string,
+        ) from err
 
-    opener = build_opener(_AiaRedirectHandler(allow_private_ip=allow_private_ip))
-    with opener.open(
-        url_string,
-        timeout=DEFAULT_URLOPEN_TIMEOUT,
-    ) as response:
-        if response.status != http.HTTPStatus.OK:
-            raise CertificateDownloadError(
-                message=f"could not download {url_string}",
-                url_string=url_string,
-            )
-
-        try:
-            return _try_parse_certificate(response.read())
-        except CertificateParseError as err:
-            raise CertificateDownloadError(
-                message=str(err),
-                url_string=url_string,
-            ) from None
+    try:
+        return _try_parse_certificate(content)
+    except CertificateParseError as err:
+        raise CertificateDownloadError(
+            message=str(err),
+            url_string=url_string,
+        ) from None
 
 
 def _wrap_single_cert_parser(
@@ -604,7 +769,7 @@ def _try_parse_certificate(data: bytes) -> list[x509.Certificate]:
     for parse_fn in _CERT_PARSE_FNS:
         try:
             return parse_fn(data)
-        except (ValueError, TypeError) as err:  # noqa: PERF203
+        except (ValueError, TypeError) as err:
             exceptions.append(err)
 
     raise CertificateParseError(reasons=[str(err) for err in exceptions])
