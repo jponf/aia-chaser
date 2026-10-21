@@ -78,6 +78,10 @@ def test_http_handlers_pin_connection_to_validated_address(
 
     fake_context = None
     if method_name == "https_open":
+        assert isinstance(handler, AiaHTTPSHandler)
+        assert (
+            do_open_mock.call_args.kwargs["context"] is handler._context  # noqa: SLF001
+        )
         fake_context = MagicMock()
         fake_context.wrap_socket.return_value = fake_socket
         connection_kwargs["context"] = fake_context
