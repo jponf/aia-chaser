@@ -8,7 +8,11 @@ from urllib.request import ProxyHandler
 import pytest
 
 from aia_chaser import chaser
-from aia_chaser.exceptions import CertificateDownloadError
+from aia_chaser.exceptions import (
+    AiaChaseExhaustedError,
+    CertificateDownloadError,
+    NonGlobalAddressError,
+)
 from aia_chaser.utils import http_pinning
 from aia_chaser.utils.http_pinning import AiaHTTPHandler, AiaHTTPSHandler
 
@@ -33,7 +37,6 @@ def test_default_private_ip_option_preserves_aia_downloads(
         Mock(side_effect=AssertionError("default behavior must not resolve-check")),
     )
     chaser._download_certificate.cache_clear()  # noqa: SLF001
-
     assert chaser._download_certificate(  # noqa: SLF001
         "http://internal.example/issuer.crt",
     )
@@ -111,10 +114,59 @@ def test_try_download_certificate_accepts_uppercase_scheme(
     chaser._download_certificate.cache_clear()  # noqa: SLF001
     url = "HTTP://Example.com/CaseSensitivePath"
 
-    assert chaser._try_download_certificate([url]) == [certificate]  # noqa: SLF001
+    assert chaser.try_download_certificate([url]) == [certificate]
     assert opener.open.call_args.args[0] == url
 
     chaser._download_certificate.cache_clear()  # noqa: SLF001
+
+
+def test_try_download_certificate_continues_after_non_global_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The downloader should try the next URL after an unsafe host is rejected."""
+    certificate = object()
+    download = Mock(
+        side_effect=[
+            NonGlobalAddressError("internal.example", "127.0.0.1"),
+            [certificate],
+        ],
+    )
+    monkeypatch.setattr(chaser, "_download_certificate", download)
+    urls = [
+        "http://internal.example/issuer.crt",
+        "http://public.example/issuer.crt",
+    ]
+
+    assert chaser.try_download_certificate(
+        urls,
+        allow_private_ip=False,
+    ) == [certificate]
+
+    assert download.call_count == len(urls)
+
+
+def test_try_download_certificate_aggregates_non_global_url_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The downloader should report address-policy errors after all URLs fail."""
+    errors = [
+        NonGlobalAddressError("internal-one.example", "127.0.0.1"),
+        NonGlobalAddressError("internal-two.example", "10.0.0.1"),
+    ]
+    download = Mock(side_effect=errors)
+    monkeypatch.setattr(chaser, "_download_certificate", download)
+
+    with pytest.raises(AiaChaseExhaustedError) as exc_info:
+        chaser.try_download_certificate(
+            [
+                "http://internal-one.example/issuer.crt",
+                "http://internal-two.example/issuer.crt",
+            ],
+            allow_private_ip=False,
+        )
+
+    assert exc_info.value.errors == errors
+    assert download.call_count == len(errors)
 
 
 @pytest.mark.parametrize("url", ["ftp://example.com/cert.crt", "http"])

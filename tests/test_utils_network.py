@@ -81,6 +81,21 @@ def test_resolve_global_host_allows_public_ip(
     assert resolve_global_host("public.example", 443)[0][4][0] == "8.8.8.8"
 
 
+def test_resolve_global_host_discards_non_global_records_when_public_records_exist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The resolver should keep public records and discard non-global ones."""
+    public_address = make_addrinfo("8.8.8.8")
+    private_address = make_addrinfo("10.0.0.1")
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        Mock(return_value=[private_address, public_address]),
+    )
+
+    assert resolve_global_host("mixed.example", 443) == [public_address]
+
+
 def test_create_pinned_socket_fails_over_and_closes_failed_socket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
