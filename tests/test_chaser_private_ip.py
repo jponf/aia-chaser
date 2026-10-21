@@ -58,7 +58,7 @@ def test_chaser_passes_private_ip_option_to_issuer_fetch(
         assert allow_private_ip is False
         return [trusted_cert]
 
-    monkeypatch.setattr(chaser, "_try_download_certificate", fetch_issuer)
+    monkeypatch.setattr(chaser, "try_download_certificate", fetch_issuer)
     assert list(chaser_instance.aia_chase_cert(leaf_cert)) == [leaf_cert, trusted_cert]
 
 
