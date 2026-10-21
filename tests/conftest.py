@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import socket
 from typing import TYPE_CHECKING
 
 import faker
@@ -84,6 +85,14 @@ REVOKED_OCSP_URLS = (
     "https://revoked-ecc-dv.ssl.com/",
     "https://revoked-ecc-ev.ssl.com/",
 )
+
+
+def make_addrinfo(
+    address: str,
+) -> tuple[int, int, int, str, tuple[str, int] | tuple[str, int, int, int]]:
+    family = socket.AF_INET6 if ":" in address else socket.AF_INET
+    sockaddr = (address, 0, 0, 0) if family == socket.AF_INET6 else (address, 0)
+    return family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", sockaddr
 
 
 def make_certificate(
