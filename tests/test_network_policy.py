@@ -11,8 +11,8 @@ import pytest
 from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
 from aia_chaser.chaser import _AiaHTTPHandler, _AiaHTTPSHandler, _AiaRedirectHandler
 from aia_chaser.exceptions import CertificateDownloadError
+from aia_chaser.utils.http_utils import validate_and_get_http_host_port
 from aia_chaser.utils.network import is_global_address, resolve_global_host
-from aia_chaser.utils.url import extract_host_port_from_url
 
 
 def _addrinfo(
@@ -23,19 +23,12 @@ def _addrinfo(
     return family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", sockaddr
 
 
-@pytest.mark.parametrize(
-    ("url", "expected"),
-    [
-        ("https://example.com/path", ("example.com", 443)),
-        ("http://example.com:8080/path", ("example.com", 8080)),
-        ("https://[2001:4860:4860::8888]/", ("2001:4860:4860::8888", 443)),
-    ],
-)
-def test_extract_host_port_from_url_returns_hostname_and_port(
-    url: str,
-    expected: tuple[str, int],
-) -> None:
-    assert extract_host_port_from_url(url) == expected
+def test_validate_http_host_port_accepts_uppercase_scheme() -> None:
+    """The HTTP validator should accept uppercase URL schemes."""
+    assert validate_and_get_http_host_port("HTTPS://Example.com/path") == (
+        "example.com",
+        443,
+    )
 
 
 def test_aia_chaser_allows_private_ips_by_default() -> None:
@@ -374,13 +367,39 @@ def test_download_certificate_warns_on_https(
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
 
-def test_download_certificate_raises_on_invalid_scheme() -> None:
+def test_try_download_certificate_accepts_uppercase_scheme(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = MagicMock(status=200)
+    response.__enter__.return_value = response
+    response.read.return_value = b"certificate"
+    opener = Mock()
+    opener.open.return_value = response
+    monkeypatch.setattr(chaser, "build_opener", Mock(return_value=opener))
+    certificate = object()
+    monkeypatch.setattr(
+        chaser,
+        "_try_parse_certificate",
+        Mock(return_value=[certificate]),
+    )
+    chaser._download_certificate.cache_clear()  # noqa: SLF001
+    url = "HTTP://Example.com/CaseSensitivePath"
+
+    assert chaser._try_download_certificate([url]) == [certificate]  # noqa: SLF001
+    assert opener.open.call_args.args[0] == url
+
+    chaser._download_certificate.cache_clear()  # noqa: SLF001
+
+
+@pytest.mark.parametrize("url", ["ftp://example.com/cert.crt", "http"])
+def test_download_certificate_raises_on_invalid_scheme(url: str) -> None:
+    """The downloader should reject unsupported or missing schemes."""
     chaser._download_certificate.cache_clear()  # noqa: SLF001
     with pytest.raises(
         CertificateDownloadError,
         match="URL scheme must be http or https",
     ):
-        chaser._download_certificate("ftp://example.com/cert.crt")  # noqa: SLF001
+        chaser._download_certificate(url)  # noqa: SLF001
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
 
