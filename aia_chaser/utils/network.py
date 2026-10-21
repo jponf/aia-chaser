@@ -36,6 +36,10 @@ def is_global_address(value: str | int) -> bool:
 
     IPv4 addresses embedded in IPv6 transition or NAT64 addresses are checked
     directly, and Teredo addresses are rejected.
+
+    Args:
+        value: IP address as a string or an integer representing an
+            IPv4 or IPv6 address.
     """
     try:
         address = ipaddress.ip_address(value)
