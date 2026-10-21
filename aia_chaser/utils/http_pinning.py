@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import http.client
-import ssl
 from typing import TYPE_CHECKING
 from urllib.request import (
     BaseHandler,
@@ -24,6 +23,7 @@ from aia_chaser.utils.network import (
 
 if TYPE_CHECKING:
     import socket
+    import ssl
     from collections.abc import Sequence
     from http.client import HTTPMessage, HTTPResponse
     from typing import IO
@@ -146,10 +146,10 @@ class AiaHTTPHandler(HTTPHandler):
 class AiaHTTPSHandler(HTTPSHandler):
     """Open HTTPS requests using globally reachable, pinned addresses."""
 
+    _context: ssl.SSLContext
+
     def __init__(self) -> None:
-        context = ssl._create_default_https_context()  # noqa: SLF001
-        super().__init__(context=context)
-        self._aia_context = context
+        super().__init__()
 
     def https_open(self, req: Request) -> HTTPResponse:
         """Resolve and pin the request host before opening the TLS connection."""
@@ -162,7 +162,7 @@ class AiaHTTPSHandler(HTTPSHandler):
         return self.do_open(
             http_class,  # pyright: ignore[reportArgumentType]
             req,
-            context=self._aia_context,
+            context=self._context,  # pyright: ignore[reportAttributeAccessIssue]
         )
 
 
