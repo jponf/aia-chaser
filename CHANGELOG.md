@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.5.0] - 2026-10-21
+
+### 🚀 Features
+
+- [**breaking**] Drop Python 3.8 support
+
+### 🐛 Bug Fixes
+
+- *(network)* Keep address types compatible with Python 3.9
+- *(url)* Handle uppercase schemes consistently
+- *(network)* Reject multicast destinations
+- *(security)* Pin HTTP connections to validated addresses
+- *(http)* Preserve proxy behavior for private IP downloads
+
+### 💼 Other
+
+- Update cryptography
+
+### 🚜 Refactor
+
+- *(network)* Group network related utilities
+- *(tests)* Reorganize certificate pinning coverage
+- *(chaser)* Cache certificate openers by IP policy
+
+### 📚 Documentation
+
+- *(network)* Clarify address policy errors and inputs
+- *(security)* Explain strict address policy and v4 default
+
+### 🧪 Testing
+
+- Strengthen network policy regression coverage
+- Expand URL and pinned networking coverage
+
+### ⚙️ Miscellaneous Tasks
+
+- Add pull_request and workflow_call triggers to Python CI
+- Split Python checks from main test matrix
+- Upgrade checkout and setup-python actions to v7
+- Add Python lint and test workflow
+
 ## [3.4.1] - 2026-04-26
 
 ### 🚀 Features
