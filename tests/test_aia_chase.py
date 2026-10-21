@@ -1,5 +1,5 @@
+from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import Sequence
 
 import pytest
 from cryptography import x509
