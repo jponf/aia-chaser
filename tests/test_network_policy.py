@@ -12,7 +12,7 @@ from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
 from aia_chaser.chaser import _AiaHTTPHandler, _AiaHTTPSHandler, _AiaRedirectHandler
 from aia_chaser.exceptions import CertificateDownloadError
 from aia_chaser.utils.http_utils import validate_and_get_http_host_port
-from aia_chaser.utils.network import is_global_address, resolve_global_host
+from aia_chaser.utils.network import is_global_unicast_address, resolve_global_host
 
 
 def _addrinfo(
@@ -50,12 +50,27 @@ def test_aia_chaser_allows_private_ips_by_default() -> None:
     ],
 )
 def test_non_global_addresses_are_rejected(address: str) -> None:
-    assert is_global_address(address) is False
+    assert is_global_unicast_address(address) is False
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "224.0.0.1",
+        "239.1.2.3",
+        "ff02::1",
+        "ff0e::1",
+        "::ffff:239.1.2.3",
+    ],
+)
+def test_global_multicast_addresses_are_rejected(address: str) -> None:
+    """The address policy should reject multicast destinations."""
+    assert is_global_unicast_address(address) is False
 
 
 def test_public_addresses_are_allowed() -> None:
-    assert is_global_address("8.8.8.8") is True
-    assert is_global_address("2001:4860:4860::8888") is True
+    assert is_global_unicast_address("8.8.8.8") is True
+    assert is_global_unicast_address("2001:4860:4860::8888") is True
 
 
 def test_resolve_global_host_raises_typed_error_for_private_ip(

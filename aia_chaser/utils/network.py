@@ -31,11 +31,12 @@ _NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
 _NAT64_DISCOVERY = ipaddress.IPv6Network("64:ff9b:1::/48")
 
 
-def is_global_address(value: str | int) -> bool:
-    """Return whether an IP address is globally routable.
+def is_global_unicast_address(value: str | int) -> bool:
+    """Return whether an IP address is a globally routable unicast destination.
 
-    IPv4 addresses embedded in IPv6 transition or NAT64 addresses are checked
-    directly, and Teredo addresses are rejected.
+    This check is intended for TCP peer addresses, so multicast is rejected
+    even when it has global scope. IPv4 addresses embedded in IPv6 transition
+    or NAT64 addresses are checked directly, and Teredo addresses are rejected.
 
     Args:
         value: IP address as a string or an integer representing an
@@ -60,6 +61,9 @@ def is_global_address(value: str | int) -> bool:
             embedded_ipv4 = ipaddress.IPv4Address(address.packed[-4:])
         if embedded_ipv4 is not None:
             address = embedded_ipv4
+
+    if address.is_multicast:
+        return False
 
     return address.is_global
 
@@ -91,7 +95,7 @@ def resolve_global_host(
         address = address_info[4][0]
         if not isinstance(address, str) or len(address_info[4]) not in (2, 4):
             raise socket.gaierror(socket.EAI_FAMILY, host)
-        if not is_global_address(address):
+        if not is_global_unicast_address(address):
             raise NonGlobalAddressError(
                 host=host,
                 address=address,
