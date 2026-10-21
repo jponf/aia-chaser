@@ -62,7 +62,7 @@ class AiaChaser:
             the time of crating the `AiaChaser` are considered the trusted
             root CAs. If not given a new SSLContext is created with the
             default certificates.
-        trusted_ca: Additional trusted CA certificates.
+        trusted_cas: Additional trusted CA certificates.
         allow_private_ip: Whether non-global IP addresses may be used for
             the initial connection and AIA certificate downloads. Defaults
             to True for backwards compatibility; this will default to False

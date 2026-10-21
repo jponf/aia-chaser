@@ -13,6 +13,7 @@ nav:
   - Development: development.md
   - API Reference:
       - AIA Chaser: references/chaser.md
+      - Constants: references/constants.md
       - Exceptions: references/exceptions.md
       - Certificate Verification: references/verify.md
       - Utilities: references/utils.md
