@@ -9,8 +9,13 @@ from urllib.request import ProxyHandler, Request
 import pytest
 
 from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
-from aia_chaser.chaser import _AiaHTTPHandler, _AiaHTTPSHandler, _AiaRedirectHandler
 from aia_chaser.exceptions import CertificateDownloadError
+from aia_chaser.utils import http_pinning
+from aia_chaser.utils.http_pinning import (
+    AiaHTTPHandler,
+    AiaHTTPSHandler,
+    AiaRedirectHandler,
+)
 from aia_chaser.utils.http_utils import validate_and_get_http_host_port
 from aia_chaser.utils.network import is_global_unicast_address, resolve_global_host
 
@@ -171,7 +176,7 @@ def test_default_private_ip_option_preserves_aia_downloads(
     response.read.return_value = b"certificate"
     opener = Mock()
     opener.open.return_value = response
-    monkeypatch.setattr(chaser, "build_opener", Mock(return_value=opener))
+    monkeypatch.setattr(http_pinning, "build_opener", Mock(return_value=opener))
     monkeypatch.setattr(
         chaser,
         "_try_parse_certificate",
@@ -184,9 +189,9 @@ def test_default_private_ip_option_preserves_aia_downloads(
     )
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
-    assert chaser._download_certificate(
+    assert chaser._download_certificate(  # noqa: SLF001
         "http://internal.example/issuer.crt",
-    )  # noqa: SLF001
+    )
     opener.open.assert_called_once()
 
     chaser._download_certificate.cache_clear()  # noqa: SLF001
@@ -201,7 +206,7 @@ def test_http_handler_rejects_private_ip_before_opening_connection(
         Mock(return_value=[_addrinfo("127.0.0.1")]),
     )
 
-    handler = _AiaHTTPHandler()
+    handler = AiaHTTPHandler()
     handler.do_open = Mock(side_effect=AssertionError("private destination connected"))
 
     with pytest.raises(NonGlobalAddressError):
@@ -211,13 +216,13 @@ def test_http_handler_rejects_private_ip_before_opening_connection(
 @pytest.mark.parametrize(
     ("handler_type", "method_name", "url", "expected_port"),
     [
-        (_AiaHTTPHandler, "http_open", "http://public.example/file", 80),
-        (_AiaHTTPSHandler, "https_open", "https://public.example/file", 443),
+        (AiaHTTPHandler, "http_open", "http://public.example/file", 80),
+        (AiaHTTPSHandler, "https_open", "https://public.example/file", 443),
     ],
 )
 def test_http_handlers_pin_connection_to_validated_address(
     monkeypatch: pytest.MonkeyPatch,
-    handler_type: type[_AiaHTTPHandler | _AiaHTTPSHandler],
+    handler_type: type[AiaHTTPHandler | AiaHTTPSHandler],
     method_name: str,
     url: str,
     expected_port: int,
@@ -255,6 +260,11 @@ def test_http_handlers_pin_connection_to_validated_address(
         type=socket.SOCK_STREAM,
     )
     fake_socket.connect.assert_called_once_with(address[4])
+    fake_socket.setsockopt.assert_called_once_with(
+        socket.IPPROTO_TCP,
+        socket.TCP_NODELAY,
+        1,
+    )
     if method_name == "https_open":
         assert fake_context is not None
         fake_context.wrap_socket.assert_called_once_with(
@@ -272,7 +282,7 @@ def test_download_uses_pinned_handlers_and_disables_proxy_in_strict_mode(
     opener = Mock()
     opener.open.return_value = response
     build_opener = Mock(return_value=opener)
-    monkeypatch.setattr(chaser, "build_opener", build_opener)
+    monkeypatch.setattr(http_pinning, "build_opener", build_opener)
     monkeypatch.setattr(chaser, "_try_parse_certificate", Mock(return_value=[object()]))
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
@@ -282,8 +292,8 @@ def test_download_uses_pinned_handlers_and_disables_proxy_in_strict_mode(
     )
 
     handlers = build_opener.call_args.args
-    assert any(isinstance(handler, _AiaHTTPHandler) for handler in handlers)
-    assert any(isinstance(handler, _AiaHTTPSHandler) for handler in handlers)
+    assert any(isinstance(handler, AiaHTTPHandler) for handler in handlers)
+    assert any(isinstance(handler, AiaHTTPSHandler) for handler in handlers)
     proxy_handler = next(
         handler for handler in handlers if isinstance(handler, ProxyHandler)
     )
@@ -292,7 +302,7 @@ def test_download_uses_pinned_handlers_and_disables_proxy_in_strict_mode(
 
 
 def test_strict_redirect_rejects_non_http_scheme() -> None:
-    handler = _AiaRedirectHandler(allow_private_ip=False)
+    handler = AiaRedirectHandler(allow_private_ip=False)
 
     with pytest.raises(CertificateDownloadError):
         handler.redirect_request(
@@ -314,7 +324,7 @@ def test_strict_redirect_is_checked_when_its_protocol_handler_opens(
         "getaddrinfo",
         getaddrinfo,
     )
-    handler = _AiaRedirectHandler(allow_private_ip=False)
+    handler = AiaRedirectHandler(allow_private_ip=False)
     redirect = handler.redirect_request(
         Request("http://public.example/original"),
         None,
@@ -327,7 +337,7 @@ def test_strict_redirect_is_checked_when_its_protocol_handler_opens(
     getaddrinfo.assert_not_called()
 
     with pytest.raises(NonGlobalAddressError):
-        _AiaHTTPHandler().http_open(redirect)
+        AiaHTTPHandler().http_open(redirect)
 
 
 @pytest.mark.parametrize("allow_private_ip", [True, False])
@@ -341,7 +351,7 @@ def test_download_always_disables_environment_proxies(
     opener = Mock()
     opener.open.return_value = response
     build_opener = Mock(return_value=opener)
-    monkeypatch.setattr(chaser, "build_opener", build_opener)
+    monkeypatch.setattr(http_pinning, "build_opener", build_opener)
     monkeypatch.setattr(chaser, "_try_parse_certificate", Mock(return_value=[object()]))
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
@@ -355,7 +365,7 @@ def test_download_always_disables_environment_proxies(
         handler for handler in handlers if isinstance(handler, ProxyHandler)
     )
     assert proxy_handler.proxies == {}
-    assert any(isinstance(handler, _AiaHTTPHandler) for handler in handlers) is (
+    assert any(isinstance(handler, AiaHTTPHandler) for handler in handlers) is (
         not allow_private_ip
     )
     chaser._download_certificate.cache_clear()  # noqa: SLF001
@@ -369,7 +379,7 @@ def test_download_certificate_warns_on_https(
     response.read.return_value = b"certificate"
     opener = Mock()
     opener.open.return_value = response
-    monkeypatch.setattr(chaser, "build_opener", Mock(return_value=opener))
+    monkeypatch.setattr(http_pinning, "build_opener", Mock(return_value=opener))
     monkeypatch.setattr(chaser, "_try_parse_certificate", Mock(return_value=[object()]))
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
@@ -390,7 +400,7 @@ def test_try_download_certificate_accepts_uppercase_scheme(
     response.read.return_value = b"certificate"
     opener = Mock()
     opener.open.return_value = response
-    monkeypatch.setattr(chaser, "build_opener", Mock(return_value=opener))
+    monkeypatch.setattr(http_pinning, "build_opener", Mock(return_value=opener))
     certificate = object()
     monkeypatch.setattr(
         chaser,
@@ -423,7 +433,7 @@ def test_download_certificate_wraps_network_error(
 ) -> None:
     opener = Mock()
     opener.open.side_effect = URLError("connection refused")
-    monkeypatch.setattr(chaser, "build_opener", Mock(return_value=opener))
+    monkeypatch.setattr(http_pinning, "build_opener", Mock(return_value=opener))
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
     with pytest.raises(CertificateDownloadError, match="could not download"):
@@ -439,7 +449,7 @@ def test_download_certificate_raises_on_non_ok_status(
     response.__enter__.return_value = response
     opener = Mock()
     opener.open.return_value = response
-    monkeypatch.setattr(chaser, "build_opener", Mock(return_value=opener))
+    monkeypatch.setattr(http_pinning, "build_opener", Mock(return_value=opener))
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
     with pytest.raises(CertificateDownloadError, match="could not download"):
@@ -451,13 +461,13 @@ def test_download_certificate_raises_on_non_ok_status(
 @pytest.mark.parametrize(
     ("handler_type", "method_name", "url", "expected_port"),
     [
-        (_AiaHTTPHandler, "http_open", "http://rebind.example/cert.crt", 80),
-        (_AiaHTTPSHandler, "https_open", "https://rebind.example/cert.crt", 443),
+        (AiaHTTPHandler, "http_open", "http://rebind.example/cert.crt", 80),
+        (AiaHTTPSHandler, "https_open", "https://rebind.example/cert.crt", 443),
     ],
 )
 def test_dns_rebinding_toctou_prevention_on_handlers(
     monkeypatch: pytest.MonkeyPatch,
-    handler_type: type[_AiaHTTPHandler | _AiaHTTPSHandler],
+    handler_type: type[AiaHTTPHandler | AiaHTTPSHandler],
     method_name: str,
     url: str,
     expected_port: int,
