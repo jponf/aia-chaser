@@ -4,7 +4,7 @@
 
 To set up the development environment for this project you need the following tools:
 
-  * Python >= 3.8 (excluding 3.9.0 and 3.9.1)
+  * Python >= 3.9 (excluding 3.9.0 and 3.9.1)
   * Git
   * Make
   * [Poetry](https://python-poetry.org/docs/#installation) (version 2 or newer)

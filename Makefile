@@ -12,7 +12,7 @@ help:
 # Project settings
 PROJECT := aia_chaser
 PACKAGE := aia_chaser
-PYTHON_VERSION=3.8
+PYTHON_VERSION=3.9
 
 # Style makefile outputs
 ECHO_COLOUR=\033[0;34m
