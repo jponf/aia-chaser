@@ -48,7 +48,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry_bumpversion.file."aia_chaser/__init__.py"]
 
 [tool.poetry.dependencies]
-python = ">=3.8,!=3.9.0,!=3.9.1,<4.0"
+python = ">=3.9,!=3.9.0,!=3.9.1,<4.0"
 cryptography = ">=44.0.1"
 tenacity = ">=8"
 
@@ -106,7 +106,7 @@ mkdocs-gen-files = "*"
 mkdocs-literate-nav = "*"
 
 [tool.black]
-target-version = ["py38"]
+target-version = ["py39"]
 line-length = 88
 
 [tool.isort]
@@ -168,7 +168,7 @@ filename = "aia_chaser/__init__.py"
 
 [tool.ruff]
 cache-dir = ".cache/ruff"
-target-version = "py38"
+target-version = "py39"
 exclude = [
     ".git",
     "__pycache__",
