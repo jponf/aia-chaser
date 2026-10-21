@@ -228,7 +228,8 @@ class AiaChaser:
         trusted_ca: Additional trusted CA certificates.
         allow_private_ip: Whether non-global IP addresses may be used for
             the initial connection and AIA certificate downloads. Defaults
-            to True for backwards compatibility.
+            to True for backwards compatibility; this will default to False
+            in v4.
     """
 
     def __init__(
