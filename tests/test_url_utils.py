@@ -48,3 +48,20 @@ def test_extract_scheme_host_port_from_url_returns_components() -> None:
         "example.com",
         443,
     )
+
+
+@pytest.mark.parametrize(
+    ("url", "message"),
+    [
+        ("example.com/path", "cannot split host from URL, missing scheme?"),
+        ("//example.com/path", "URL has no port nor scheme to infer it"),
+        ("custom://example.com/path", "default port for scheme 'custom' is not known"),
+    ],
+)
+def test_extract_scheme_host_port_from_url_rejects_unresolvable_endpoints(
+    url: str,
+    message: str,
+) -> None:
+    """The endpoint extractor should explain why a URL cannot provide a port."""
+    with pytest.raises(ValueError, match=message):
+        extract_scheme_host_port_from_url(url)

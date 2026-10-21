@@ -117,6 +117,27 @@ def test_strict_redirect_rejects_non_http_scheme() -> None:
         )
 
 
+def test_redirect_skips_destination_validation_when_private_ips_are_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The compatibility redirect handler should not validate redirect URLs."""
+    validate_url = Mock()
+    monkeypatch.setattr(http_pinning, "validate_and_get_http_host_port", validate_url)
+    handler = AiaRedirectHandler(allow_private_ip=True)
+
+    redirect = handler.redirect_request(
+        Request("http://public.example/original"),
+        BytesIO(),
+        302,
+        "Found",
+        HTTPMessage(),
+        "http://destination.example/",
+    )
+
+    assert redirect is not None
+    validate_url.assert_not_called()
+
+
 def test_strict_redirect_is_checked_when_its_protocol_handler_opens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
