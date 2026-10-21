@@ -290,6 +290,11 @@ class AiaChaser:
                 `certificate`. The first is the provided
                 certificate and the last is the root or a
                 trusted CA.
+
+        Raises:
+            NonGlobalAddressError: If private IP addresses are disallowed and
+                an AIA URL resolves to a non-global address. This may happen
+                during iteration, after certificates have already been yielded.
         """
         to_process = collections.deque([certificate])
         while True:
@@ -354,6 +359,12 @@ class AiaChaser:
                 host's certificate. The first is the host's
                 certificate and the last is the root or a
                 trusted CA.
+
+        Raises:
+            NonGlobalAddressError: If private IP addresses are disallowed and
+                the host or an AIA URL resolves to a non-global address. An
+                error from the initial host resolution occurs before the first
+                certificate is yielded; an AIA error may occur during iteration.
         """
         cert = self.fetch_host_cert(host=host, port=port)
         yield from self.aia_chase_cert(certificate=cert)
@@ -702,6 +713,8 @@ def _download_certificate(
     Raises:
         CertificateDownloadError: If the URL scheme is unsupported,
             the download fails, or the certificate data cannot be parsed.
+        NonGlobalAddressError: If `allow_private_ip` is False and the URL host
+            resolves to a non-global address.
     """
     scheme = extract_scheme_from_url(url_string)
     if scheme == "https":
