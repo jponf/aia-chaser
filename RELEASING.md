@@ -59,7 +59,8 @@ poetry version major
 
 ## Workflows
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| `python-ci.yml` | Push | Run tests, linting, type checking |
-| `python-publish.yml` | Release published | Build and publish to PyPI |
+| Workflow             | Trigger       | Purpose |
+|----------------------|---------------|---------|
+| `python-lint.yml`    | `push` (non-main), `pull_request`, `workflow_call` | Run linting, tests, and type checking |
+| `python-main-ci.yml` | `push` (main) | Run the main-branch checks and build |
+| `python-publish.yml` | `release`     | Build and publish to PyPI |
