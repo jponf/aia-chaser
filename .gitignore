@@ -106,3 +106,7 @@ poetry.toml
 # Mise
 mise.toml
 .mise.toml
+
+# Temporary files
+/temp
+/tmp
