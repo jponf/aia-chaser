@@ -20,6 +20,7 @@ from aia_chaser.exceptions import (
     CertificateDownloadError,
     CertificateParseError,
     MissingPeerCertificateError,
+    NonGlobalAddressError,
     NoValidAiaCaUrlError,
     RootCertificateNotFoundError,
 )
@@ -64,7 +65,8 @@ class AiaChaser:
         allow_private_ip: Whether non-global IP addresses may be used for
             the initial connection and AIA certificate downloads. Defaults
             to True for backwards compatibility; this will default to False
-            in v4.
+            in v4. When False, non-global DNS answers are discarded and the
+            hostname fails only if no global addresses remain.
     """
 
     def __init__(
@@ -128,9 +130,10 @@ class AiaChaser:
                 trusted CA.
 
         Raises:
-            NonGlobalAddressError: If private IP addresses are disallowed and
-                an AIA URL resolves to a non-global address. This may happen
-                during iteration, after certificates have already been yielded.
+            AiaChaseExhaustedError: If all HTTP(S) AIA URLs fail to download,
+                parse, or resolve to a usable globally routable address. This
+                may happen during iteration, after certificates have already
+                been yielded.
         """
         to_process = collections.deque([certificate])
         while True:
@@ -172,7 +175,7 @@ class AiaChaser:
                 break
 
             to_process.extend(
-                _try_download_certificate(
+                try_download_certificate(
                     cert_info.aia_ca_issuers,
                     allow_private_ip=self.allow_private_ip,
                 ),
@@ -198,9 +201,10 @@ class AiaChaser:
 
         Raises:
             NonGlobalAddressError: If private IP addresses are disallowed and
-                the host or an AIA URL resolves to a non-global address. An
-                error from the initial host resolution occurs before the first
-                certificate is yielded; an AIA error may occur during iteration.
+                the initial host has no globally routable address.
+            AiaChaseExhaustedError: If all HTTP(S) AIA URLs fail to download,
+                parse, or resolve to a usable globally routable address.
+                AIA URLs are tried in order until one succeeds or all fail.
         """
         cert = self.fetch_host_cert(host=host, port=port)
         yield from self.aia_chase_cert(certificate=cert)
@@ -219,7 +223,7 @@ class AiaChaser:
             MissingPeerCertificateError: If it is not possible to retrieve
                 the certificate of the `host`.
             NonGlobalAddressError: If `allow_private_ip` is False and the host
-                resolves to a non-global IP address.
+                has no globally routable IP addresses.
         """
         with contextlib.ExitStack() as ctx:
             if self.allow_private_ip:
@@ -479,11 +483,22 @@ class AiaChaser:
         context.load_verify_locations(cadata=certificates_to_der(certificates))
 
 
-def _try_download_certificate(
+def try_download_certificate(
     urls: Sequence[str],
     *,
     allow_private_ip: bool = True,
 ) -> list[x509.Certificate]:
+    """Try AIA URLs until one downloads and parses successfully.
+
+    Non-global DNS answers are filtered out. If a URL has no globally
+    routable answers, its address-policy error is recorded and the next URL
+    is tried.
+
+    Args:
+        urls: AIA certificate URLs to try in order.
+        allow_private_ip: Whether downloads may connect to non-global IP
+            addresses. If False, non-global DNS answers are skipped.
+    """
     http_urls = [url for url in urls if url.lower().startswith(("http:", "https:"))]
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
@@ -498,6 +513,7 @@ def _try_download_certificate(
         except (  # noqa: PERF203
             CertificateDownloadError,
             CertificateParseError,
+            NonGlobalAddressError,
         ) as err:
             errors.append(err)
 

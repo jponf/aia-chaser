@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    import datetime
+    import datetime as dt
     from collections.abc import Sequence
 
     from cryptography.x509.ocsp import OCSPResponseStatus
@@ -92,7 +92,9 @@ class AiaChaseExhaustedError(AiaChaserError):
 
     def __init__(
         self,
-        errors: Sequence[CertificateDownloadError | CertificateParseError],
+        errors: Sequence[
+            CertificateDownloadError | CertificateParseError | NonGlobalAddressError
+        ],
     ) -> None:
         super().__init__("AIA chasing failed after exhausting all CA urls")
         self.errors = errors
@@ -170,9 +172,9 @@ class CertificateExpiredError(CertificateVerificationError):
 
     def __init__(
         self,
-        not_valid_before: datetime.datetime,
-        not_valid_after: datetime.datetime,
-        verification_time: datetime.datetime,
+        not_valid_before: dt.datetime,
+        not_valid_after: dt.datetime,
+        verification_time: dt.datetime,
     ) -> None:
         super().__init__(
             "certificate outside of validity period"
@@ -256,7 +258,7 @@ class CrlRevokedError(CrlError):
     def __init__(
         self,
         certificate: str,
-        revocation_date: datetime.datetime,
+        revocation_date: dt.datetime,
         reason: str,
     ) -> None:
         msg = f"Certificate {certificate} revoked by CRL on {revocation_date}"
