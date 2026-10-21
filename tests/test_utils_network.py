@@ -179,11 +179,11 @@ def test_create_pinned_socket_raises_gaierror_for_empty_addresses() -> None:
     assert exc_info.value.errno == socket.EAI_NONAME
 
 
-def test_resolve_global_host_rejects_unexpected_address_family(
+def test_resolve_global_host_rejects_unsupported_sockaddr_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The resolver should reject address records with an unsupported shape."""
-    address_info = (socket.AF_UNIX, socket.SOCK_STREAM, 0, "", ("8.8.8.8",))
+    address_info = (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("8.8.8.8",))
     monkeypatch.setattr(socket, "getaddrinfo", Mock(return_value=[address_info]))
 
     with pytest.raises(socket.gaierror) as exc_info:
