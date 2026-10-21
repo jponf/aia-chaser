@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import ipaddress
 import socket
+import sys
 from typing import TYPE_CHECKING, cast
 
 from aia_chaser.exceptions import NonGlobalAddressError
@@ -12,13 +13,24 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-SocketAddressInfo = tuple[
-    int,
-    int,
-    int,
-    str,
-    tuple[str, int] | tuple[str, int, int, int],
-]
+if sys.version_info >= (3, 10):
+    SocketAddressInfo = tuple[
+        int,
+        int,
+        int,
+        str,
+        tuple[str, int] | tuple[str, int, int, int],
+    ]
+else:
+    from typing import Union
+
+    SocketAddressInfo = tuple[
+        int,
+        int,
+        int,
+        str,
+        Union[tuple[str, int], tuple[str, int, int, int]],
+    ]
 
 _NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
 _NAT64_DISCOVERY = ipaddress.IPv6Network("64:ff9b:1::/48")
