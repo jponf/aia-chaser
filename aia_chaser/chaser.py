@@ -29,7 +29,7 @@ from aia_chaser.utils.cert_utils import (
     extract_aia_information,
     load_ssl_ca_certificates,
 )
-from aia_chaser.utils.http_pinning import build_certificate_opener
+from aia_chaser.utils.http_pinning import get_cached_certificate_opener
 from aia_chaser.utils.network import create_global_unicast_connection
 from aia_chaser.utils.url import extract_host_port_from_url, extract_scheme_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
@@ -37,6 +37,7 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
+    from urllib.request import OpenerDirector
 
 
 __all__ = ["AiaChaser"]
@@ -503,13 +504,11 @@ def try_download_certificate(
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
 
+    opener = get_cached_certificate_opener(allow_private_ip=allow_private_ip)
     errors = []
     for http_url in http_urls:
         try:
-            return _download_certificate(
-                http_url,
-                allow_private_ip=allow_private_ip,
-            )
+            return _download_certificate(http_url, opener=opener)
         except (  # noqa: PERF203
             CertificateDownloadError,
             CertificateParseError,
@@ -524,13 +523,13 @@ def try_download_certificate(
 def _download_certificate(
     url_string: str,
     *,
-    allow_private_ip: bool = True,
+    opener: OpenerDirector,
 ) -> list[x509.Certificate]:
     """Download and parse X.509 certificates from an AIA URL.
 
     Args:
         url_string: URL pointing to the certificate to download.
-        allow_private_ip: Whether non-global IP addresses may be used.
+        opener: Opener configured for the address policy.
 
     Returns:
         A list of parsed X.509 certificates.
@@ -538,8 +537,8 @@ def _download_certificate(
     Raises:
         CertificateDownloadError: If the URL scheme is unsupported,
             the download fails, or the certificate data cannot be parsed.
-        NonGlobalAddressError: If `allow_private_ip` is False and the URL host
-            resolves to a non-global address.
+        NonGlobalAddressError: If the configured opener rejects the URL host
+            because it resolves to a non-global address.
     """
     scheme = extract_scheme_from_url(url_string)
     if scheme == "https":
@@ -554,9 +553,6 @@ def _download_certificate(
             url_string=url_string,
         )
 
-    opener = build_certificate_opener(
-        allow_private_ip=allow_private_ip,
-    )
     try:
         with opener.open(
             url_string,

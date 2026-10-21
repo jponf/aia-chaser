@@ -193,3 +193,12 @@ def build_certificate_opener(
         handlers.append(ProxyHandler({}))
         handlers.extend((AiaHTTPHandler(), AiaHTTPSHandler()))
     return build_opener(*handlers)
+
+
+@functools.lru_cache(maxsize=2)
+def get_cached_certificate_opener(
+    *,
+    allow_private_ip: bool = True,
+) -> OpenerDirector:
+    """Return the cached opener configured for the requested IP policy."""
+    return build_certificate_opener(allow_private_ip=allow_private_ip)

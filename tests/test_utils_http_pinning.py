@@ -201,12 +201,40 @@ def test_proxy_handler_ignores_environment_when_private_ips_are_disallowed(
     monkeypatch.setattr(http_pinning, "build_opener", build_opener)
 
     http_pinning.build_certificate_opener(allow_private_ip=False)
+    handlers = build_opener.call_args.args
+    assert any(isinstance(handler, AiaHTTPHandler) for handler in handlers)
+    assert any(isinstance(handler, AiaHTTPSHandler) for handler in handlers)
     proxy_handler = next(
-        handler
-        for handler in build_opener.call_args.args
-        if isinstance(handler, ProxyHandler)
+        handler for handler in handlers if isinstance(handler, ProxyHandler)
     )
     assert proxy_handler.proxies == {}  # type: ignore[attr-defined]
+
+
+def test_cached_certificate_opener_should_cache_by_private_ip_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opener cache should reuse one opener per private-IP policy."""
+    http_pinning.get_cached_certificate_opener.cache_clear()
+    default_opener = Mock()
+    strict_opener = Mock()
+    expected_build_count = 2
+    build_opener = Mock(side_effect=[default_opener, strict_opener])
+    monkeypatch.setattr(http_pinning, "build_certificate_opener", build_opener)
+
+    assert (
+        http_pinning.get_cached_certificate_opener(allow_private_ip=True)
+        is default_opener
+    )
+    assert (
+        http_pinning.get_cached_certificate_opener(allow_private_ip=True)
+        is default_opener
+    )
+    assert (
+        http_pinning.get_cached_certificate_opener(allow_private_ip=False)
+        is strict_opener
+    )
+    assert build_opener.call_count == expected_build_count
+    http_pinning.get_cached_certificate_opener.cache_clear()
 
 
 @pytest.mark.parametrize(
