@@ -2,18 +2,30 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import sys
 from typing import cast
 
 from aia_chaser.exceptions import NonGlobalAddressError
 
 
-SocketAddressInfo = tuple[
-    int,
-    int,
-    int,
-    str,
-    tuple[str, int] | tuple[str, int, int, int],
-]
+if sys.version_info < (3, 10):
+    from typing import Tuple, Union
+
+    SocketAddressInfo = Tuple[
+        int,
+        int,
+        int,
+        str,
+        Union[Tuple[str, int], Tuple[str, int, int, int]],
+    ]
+else:
+    SocketAddressInfo = tuple[
+        int,
+        int,
+        int,
+        str,
+        tuple[str, int] | tuple[str, int, int, int],
+    ]
 
 _NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
 _NAT64_DISCOVERY = ipaddress.IPv6Network("64:ff9b:1::/48")
