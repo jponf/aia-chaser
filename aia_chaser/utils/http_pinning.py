@@ -172,18 +172,24 @@ def build_certificate_opener(
 ) -> OpenerDirector:
     """Build a urllib opener configured for AIA certificate downloads.
 
+    When private addresses are disallowed, redirects are restricted to valid
+    HTTP(S) URLs and connections use pinned global addresses. Environment
+    proxies are disabled in this mode because they could bypass address
+    pinning. When private addresses are allowed, urllib's default redirect
+    behavior and environment proxies are used for backwards compatibility.
+
     Args:
         allow_private_ip: Whether non-global IP addresses may be used.
 
     Returns:
-        An opener with redirects validated and environment proxies disabled.
-        When private addresses are disallowed, connections use pinned global
-        addresses.
+        An opener configured for AIA certificate downloads.
     """
     handlers: list[BaseHandler] = [
         AiaRedirectHandler(allow_private_ip=allow_private_ip),
-        ProxyHandler({}),
     ]
-    if not allow_private_ip:
+    if allow_private_ip:
+        handlers.append(ProxyHandler())
+    else:
+        handlers.append(ProxyHandler({}))
         handlers.extend((AiaHTTPHandler(), AiaHTTPSHandler()))
     return build_opener(*handlers)
