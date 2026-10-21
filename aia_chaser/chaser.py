@@ -25,11 +25,7 @@ from urllib.request import (
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
 
-from aia_chaser.constants import (
-    DEFAULT_URLOPEN_TIMEOUT,
-    DOWNLOAD_CACHE_SIZE,
-    SocketAddressInfo,
-)
+from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT, DOWNLOAD_CACHE_SIZE
 from aia_chaser.exceptions import (
     AiaChaseExhaustedError,
     CertificateDownloadError,
@@ -43,7 +39,8 @@ from aia_chaser.utils.cert_utils import (
     extract_aia_information,
     load_ssl_ca_certificates,
 )
-from aia_chaser.utils.url import extract_host_port_from_url, resolve_global_host
+from aia_chaser.utils.network import SocketAddressInfo, resolve_global_host
+from aia_chaser.utils.url import extract_host_port_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 from .utils.http_utils import validate_and_get_http_host_port

@@ -38,12 +38,3 @@ class SSLReason(StrEnum):
     """SSL error reasons."""
 
     NO_CERTIFICATE_FOUND = "NO_CERTIFICATE_OR_CRL_FOUND"
-
-
-SocketAddressInfo = tuple[
-    int,
-    int,
-    int,
-    str,
-    tuple[str, int] | tuple[str, int, int, int],
-]
