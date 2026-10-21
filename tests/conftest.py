@@ -1,16 +1,28 @@
 """Integration tests configuration file for pytest."""
 
-import datetime
-from collections.abc import Sequence
+from __future__ import annotations
+
+import datetime as dt
+from typing import TYPE_CHECKING
 
 import faker
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from cryptography.x509 import NameOID
 
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from cryptography.hazmat.primitives.asymmetric.rsa import (
+        RSAPrivateKey,
+        RSAPublicKey,
+    )
+
+# Fake AIA CA issuer url for tests
+AIA_CA_ISSUER_URL = "http://ca.example/issuer.crt"
 
 # Smaller subset for HTTP library integration tests
 TEST_URLS_SUBSET = (
@@ -78,9 +90,9 @@ def make_certificate(
     cert_key: RSAPublicKey,
     issuer_name: x509.Name,
     issuer_key: RSAPrivateKey,
+    aia_ca_issuer_url: str | None = None,
 ) -> x509.Certificate:
     fake = faker.Faker(locale=["en_US"])
-
     subject = x509.Name(
         [
             x509.NameAttribute(NameOID.COUNTRY_NAME, fake.country_code()),
@@ -90,22 +102,34 @@ def make_certificate(
         ],
     )
 
-    return (
+    builder = (
         x509.CertificateBuilder()
         .subject_name(subject)
         .issuer_name(issuer_name)
         .public_key(cert_key)
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+        .not_valid_before(dt.datetime.now(dt.timezone.utc))
         .not_valid_after(
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=10),
+            dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=10),
         )
         .add_extension(
             x509.SubjectAlternativeName([x509.DNSName(fake.domain_name())]),
             critical=False,
         )
-        .sign(issuer_key, hashes.SHA256())
     )
+    if aia_ca_issuer_url is not None:
+        builder = builder.add_extension(
+            x509.AuthorityInformationAccess(
+                [
+                    x509.AccessDescription(
+                        x509.AuthorityInformationAccessOID.CA_ISSUERS,  # pyright: ignore[reportPrivateImportUsage]
+                        x509.UniformResourceIdentifier(aia_ca_issuer_url),
+                    ),
+                ],
+            ),
+            critical=False,
+        )
+    return builder.sign(issuer_key, hashes.SHA256())
 
 
 @pytest.fixture(scope="session")
@@ -134,9 +158,9 @@ def root_ca(root_ca_key: RSAPrivateKey) -> x509.Certificate:
         .issuer_name(issuer)
         .public_key(root_ca_key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.now(datetime.timezone.utc))
+        .not_valid_before(dt.datetime.now(dt.timezone.utc))
         .not_valid_after(
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=10),
+            dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=10),
         )
         .add_extension(
             x509.SubjectAlternativeName([x509.DNSName("localhost")]),
@@ -147,7 +171,7 @@ def root_ca(root_ca_key: RSAPrivateKey) -> x509.Certificate:
 
 
 @pytest.fixture(scope="session")
-def host_and_ca(
+def host_and_ca_chain(
     root_ca_key: RSAPrivateKey,
     root_ca: x509.Certificate,
 ) -> Sequence[x509.Certificate]:

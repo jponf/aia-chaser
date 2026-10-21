@@ -5,17 +5,25 @@ from urllib.parse import urlsplit
 from aia_chaser.constants import DEFAULT_SCHEME_PORT
 
 
-def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
-    """Extract host and port from a URL string.
+def extract_scheme_from_url(url_string: str) -> str:
+    """Extract the lowercased scheme from a URL string.
+
+    Returns an empty string if the URL has no scheme.
+    """
+    return urlsplit(url_string).scheme.lower()
+
+
+def extract_scheme_host_port_from_url(url_string: str) -> tuple[str, str, int]:
+    """Extract the scheme, host, and port from a URL string.
 
     If the port is not explicitly specified it will be inferred from the
     scheme.
 
     Args:
-        url_string: URL from which to extract the host.
+        url_string: URL from which to extract the scheme, host, and port.
 
     Returns:
-        The host (netloc) of `url_string` and, if present, the port.
+        The lowercased scheme, hostname, and explicit or inferred port.
 
     Raises:
         ValueError: If the host or port cannot be extracted from the given
@@ -23,7 +31,8 @@ def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
             it is missing the scheme component.
     """
     url_split = urlsplit(url_string)
-    if not url_split.netloc:
+    host = url_split.hostname
+    if not host:
         raise ValueError("cannot split host from URL, missing scheme?")
 
     scheme = url_split.scheme.lower()
@@ -37,4 +46,10 @@ def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
 
         port = DEFAULT_SCHEME_PORT[scheme]
 
-    return url_split.netloc, port
+    return scheme, host, port
+
+
+def extract_host_port_from_url(url_string: str) -> tuple[str, int]:
+    """Extract the host and port from a URL string."""
+    _, host, port = extract_scheme_host_port_from_url(url_string)
+    return host, port

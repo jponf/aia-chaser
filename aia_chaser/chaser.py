@@ -4,11 +4,12 @@ import collections
 import contextlib
 import functools
 import http
+import http.client
 import socket
 import ssl
 import warnings
 from typing import TYPE_CHECKING, NamedTuple
-from urllib.request import urlopen
+from urllib.error import URLError
 
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
@@ -27,7 +28,9 @@ from aia_chaser.utils.cert_utils import (
     extract_aia_information,
     load_ssl_ca_certificates,
 )
-from aia_chaser.utils.url import extract_host_port_from_url
+from aia_chaser.utils.http_pinning import build_certificate_opener
+from aia_chaser.utils.network import create_global_unicast_connection
+from aia_chaser.utils.url import extract_host_port_from_url, extract_scheme_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
@@ -58,13 +61,20 @@ class AiaChaser:
             root CAs. If not given a new SSLContext is created with the
             default certificates.
         trusted_ca: Additional trusted CA certificates.
+        allow_private_ip: Whether non-global IP addresses may be used for
+            the initial connection and AIA certificate downloads. Defaults
+            to True for backwards compatibility; this will default to False
+            in v4.
     """
 
     def __init__(
         self,
         context: ssl.SSLContext | None = None,
         trusted_cas: Sequence[x509.Certificate] | None = None,
+        *,
+        allow_private_ip: bool = True,
     ) -> None:
+        self.allow_private_ip = allow_private_ip
         trusted_cas = trusted_cas or []
 
         if context is None:
@@ -116,6 +126,11 @@ class AiaChaser:
                 `certificate`. The first is the provided
                 certificate and the last is the root or a
                 trusted CA.
+
+        Raises:
+            NonGlobalAddressError: If private IP addresses are disallowed and
+                an AIA URL resolves to a non-global address. This may happen
+                during iteration, after certificates have already been yielded.
         """
         to_process = collections.deque([certificate])
         while True:
@@ -156,7 +171,12 @@ class AiaChaser:
                 yield self._trusted[cert_info.issuer]
                 break
 
-            to_process.extend(_try_download_certificate(cert_info.aia_ca_issuers))
+            to_process.extend(
+                _try_download_certificate(
+                    cert_info.aia_ca_issuers,
+                    allow_private_ip=self.allow_private_ip,
+                ),
+            )
 
     def aia_chase(
         self,
@@ -175,6 +195,12 @@ class AiaChaser:
                 host's certificate. The first is the host's
                 certificate and the last is the root or a
                 trusted CA.
+
+        Raises:
+            NonGlobalAddressError: If private IP addresses are disallowed and
+                the host or an AIA URL resolves to a non-global address. An
+                error from the initial host resolution occurs before the first
+                certificate is yielded; an AIA error may occur during iteration.
         """
         cert = self.fetch_host_cert(host=host, port=port)
         yield from self.aia_chase_cert(certificate=cert)
@@ -192,9 +218,15 @@ class AiaChaser:
         Raises:
             MissingPeerCertificateError: If it is not possible to retrieve
                 the certificate of the `host`.
+            NonGlobalAddressError: If `allow_private_ip` is False and the host
+                resolves to a non-global IP address.
         """
         with contextlib.ExitStack() as ctx:
-            sock = ctx.enter_context(socket.create_connection((host, port)))
+            if self.allow_private_ip:
+                sock = socket.create_connection((host, port))
+            else:
+                sock = create_global_unicast_connection(host, port)
+            sock = ctx.enter_context(sock)
             s_sock = ctx.enter_context(
                 self._context.wrap_socket(
                     sock,
@@ -447,7 +479,11 @@ class AiaChaser:
         context.load_verify_locations(cadata=certificates_to_der(certificates))
 
 
-def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
+def _try_download_certificate(
+    urls: Sequence[str],
+    *,
+    allow_private_ip: bool = True,
+) -> list[x509.Certificate]:
     http_urls = [url for url in urls if url.lower().startswith(("http:", "https:"))]
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
@@ -455,7 +491,10 @@ def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
     errors = []
     for http_url in http_urls:
         try:
-            return _download_certificate(http_url)
+            return _download_certificate(
+                http_url,
+                allow_private_ip=allow_private_ip,
+            )
         except (  # noqa: PERF203
             CertificateDownloadError,
             CertificateParseError,
@@ -466,36 +505,66 @@ def _try_download_certificate(urls: Sequence[str]) -> list[x509.Certificate]:
 
 
 @functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
-def _download_certificate(url_string: str) -> list[x509.Certificate]:
-    if url_string.startswith("https:"):
+def _download_certificate(
+    url_string: str,
+    *,
+    allow_private_ip: bool = True,
+) -> list[x509.Certificate]:
+    """Download and parse X.509 certificates from an AIA URL.
+
+    Args:
+        url_string: URL pointing to the certificate to download.
+        allow_private_ip: Whether non-global IP addresses may be used.
+
+    Returns:
+        A list of parsed X.509 certificates.
+
+    Raises:
+        CertificateDownloadError: If the URL scheme is unsupported,
+            the download fails, or the certificate data cannot be parsed.
+        NonGlobalAddressError: If `allow_private_ip` is False and the URL host
+            resolves to a non-global address.
+    """
+    scheme = extract_scheme_from_url(url_string)
+    if scheme == "https":
         warnings.warn(
             "Trying to download an intermediate CA certificate using HTTPS",
             category=UserWarning,
             stacklevel=2,
         )
-    elif not url_string.startswith("http:"):
+    elif scheme != "http":
         raise CertificateDownloadError(
             message="URL scheme must be http or https",
             url_string=url_string,
         )
 
-    with urlopen(  # noqa: S310
-        url_string,
-        timeout=DEFAULT_URLOPEN_TIMEOUT,
-    ) as response:
-        if response.status != http.HTTPStatus.OK:
-            raise CertificateDownloadError(
-                message=f"could not download {url_string}",
-                url_string=url_string,
-            )
+    opener = build_certificate_opener(
+        allow_private_ip=allow_private_ip,
+    )
+    try:
+        with opener.open(
+            url_string,
+            timeout=DEFAULT_URLOPEN_TIMEOUT,
+        ) as response:
+            if response.status != http.HTTPStatus.OK:
+                raise CertificateDownloadError(
+                    message=f"could not download {url_string}",
+                    url_string=url_string,
+                )
+            content = response.read()
+    except (URLError, http.client.HTTPException, OSError) as err:
+        raise CertificateDownloadError(
+            message=f"could not download {url_string}: {err}",
+            url_string=url_string,
+        ) from err
 
-        try:
-            return _try_parse_certificate(response.read())
-        except CertificateParseError as err:
-            raise CertificateDownloadError(
-                message=str(err),
-                url_string=url_string,
-            ) from None
+    try:
+        return _try_parse_certificate(content)
+    except CertificateParseError as err:
+        raise CertificateDownloadError(
+            message=str(err),
+            url_string=url_string,
+        ) from None
 
 
 def _wrap_single_cert_parser(

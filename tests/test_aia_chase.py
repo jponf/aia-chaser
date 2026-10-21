@@ -1,6 +1,10 @@
-import pytest
+from datetime import datetime, timezone
+from typing import Sequence
 
-from aia_chaser import AiaChaser, VerifyCertificatesConfig
+import pytest
+from cryptography import x509
+
+from aia_chaser import AiaChaser, VerifyCertificatesConfig, verify_certificate_chain
 from aia_chaser.exceptions import (
     CertificateChainError,
     CertificateExpiredError,
@@ -9,6 +13,15 @@ from aia_chaser.exceptions import (
 )
 
 from .conftest import EXPIRED_URLS, REVOKED_CRL_URLS, REVOKED_OCSP_URLS, TEST_URLS
+
+
+def _verification_time_for_chain(chain: Sequence[x509.Certificate]) -> datetime:
+    """Return a time within the chain's shared validity window, preferring now."""
+    valid_from = max(cert.not_valid_before_utc for cert in chain)
+    valid_until = min(cert.not_valid_after_utc for cert in chain)
+    assert valid_from <= valid_until
+    now = datetime.now(timezone.utc)
+    return max(valid_from, min(now, valid_until))
 
 
 @pytest.mark.parametrize("url_string", TEST_URLS)
@@ -73,11 +86,20 @@ def test_aia_chase_url_crl_revoked(url_string: str) -> None:
 @pytest.mark.parametrize("url_string", REVOKED_OCSP_URLS)
 def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
     chaser = AiaChaser()
+    chain = chaser.fetch_cert_chain_for_url(
+        url_string=url_string,
+        verify=False,
+    )
+
+    verification_time = _verification_time_for_chain(chain)
+
     with pytest.raises(CertificateChainError) as exc_info:
-        chaser.fetch_ca_chain_for_url(
-            url_string=url_string,
-            verify_config=VerifyCertificatesConfig(
+        verify_certificate_chain(
+            certificates=chain,
+            trusted=chaser._trusted,  # noqa: SLF001
+            config=VerifyCertificatesConfig(
                 ocsp_enabled=True,
+                verification_time=verification_time,
             ),
         )
     assert type(exc_info.value.reason) is OcspRevokedStatusError
@@ -86,10 +108,18 @@ def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
 @pytest.mark.parametrize("url_string", REVOKED_OCSP_URLS)
 def test_aia_chase_url_ignore_ocsp_revoked(url_string: str) -> None:
     chaser = AiaChaser()
-    chain = chaser.fetch_ca_chain_for_url(
+    chain = chaser.fetch_cert_chain_for_url(
         url_string=url_string,
-        verify_config=VerifyCertificatesConfig(
+        verify=False,
+    )
+
+    verification_time = _verification_time_for_chain(chain)
+    verify_certificate_chain(
+        certificates=chain,
+        trusted=chaser._trusted,  # noqa: SLF001
+        config=VerifyCertificatesConfig(
             ocsp_enabled=False,
+            verification_time=verification_time,
         ),
     )
     assert len(chain) >= 1

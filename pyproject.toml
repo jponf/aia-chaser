@@ -106,7 +106,7 @@ mkdocs-gen-files = "*"
 mkdocs-literate-nav = "*"
 
 [tool.black]
-target-version = ["py36", "py37", "py38"]
+target-version = ["py38"]
 line-length = 88
 
 [tool.isort]
@@ -168,6 +168,7 @@ filename = "aia_chaser/__init__.py"
 
 [tool.ruff]
 cache-dir = ".cache/ruff"
+target-version = "py38"
 exclude = [
     ".git",
     "__pycache__",
@@ -183,11 +184,12 @@ line-length = 88
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
+    "CPY001",
     "D100",
     "D104",
     "D107",
     "D401",
-    "B905", # zip() strict= parameter requires Python 3.10+
+    "B905",   # zip() strict= parameter requires Python 3.10+
 ]
 
 [tool.ruff.lint.flake8-quotes]
