@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import socket
-from types import SimpleNamespace
+from http.client import HTTPMessage
+from io import BytesIO
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, Mock
 from urllib.error import URLError
 from urllib.request import ProxyHandler, Request
@@ -18,6 +20,13 @@ from aia_chaser.utils.http_pinning import (
 )
 from aia_chaser.utils.http_utils import validate_and_get_http_host_port
 from aia_chaser.utils.network import is_global_unicast_address, resolve_global_host
+from tests.conftest import AIA_CA_ISSUER_URL
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from cryptography import x509
 
 
 def _addrinfo(
@@ -116,12 +125,10 @@ def test_initial_host_rejects_private_ip_before_connecting(
     )
     monkeypatch.setattr(
         socket,
-        "create_connection",
+        "socket",
         Mock(side_effect=AssertionError("private destination must not connect")),
     )
-    chaser = object.__new__(AiaChaser)
-    chaser.allow_private_ip = False
-    chaser._context = SimpleNamespace(wrap_socket=Mock())
+    chaser = AiaChaser(allow_private_ip=False)
 
     with pytest.raises(NonGlobalAddressError):
         chaser.fetch_host_cert("internal.example")
@@ -129,42 +136,24 @@ def test_initial_host_rejects_private_ip_before_connecting(
 
 def test_chaser_passes_private_ip_option_to_issuer_fetch(
     monkeypatch: pytest.MonkeyPatch,
+    host_and_ca_chain: Sequence[x509.Certificate],
 ) -> None:
-    leaf_cert = object()
-    issuer_cert = object()
-    trusted_cert = object()
-    info_by_cert = {
-        leaf_cert: SimpleNamespace(
-            subject="leaf",
-            issuer="issuer",
-            aia_ca_issuers=["http://ca.example/issuer.crt"],
-        ),
-        issuer_cert: SimpleNamespace(
-            subject="issuer",
-            issuer="root",
-            aia_ca_issuers=[],
-        ),
-    }
-    chaser_instance = object.__new__(AiaChaser)
-    chaser_instance.allow_private_ip = False
-    chaser_instance._trusted = {"issuer": trusted_cert}
-    monkeypatch.setattr(
-        chaser,
-        "_extract_aia_info",
-        lambda certificate: info_by_cert[certificate],
+    leaf_cert, trusted_cert = host_and_ca_chain
+    chaser_instance = AiaChaser(
+        trusted_cas=[trusted_cert],
+        allow_private_ip=False,
     )
 
     def fetch_issuer(
         urls: list[str],
         *,
         allow_private_ip: bool = True,
-    ) -> list[object]:
-        assert urls == ["http://ca.example/issuer.crt"]
+    ) -> list[x509.Certificate]:
+        assert urls == [AIA_CA_ISSUER_URL]
         assert allow_private_ip is False
-        return [issuer_cert]
+        return [trusted_cert]
 
     monkeypatch.setattr(chaser, "_try_download_certificate", fetch_issuer)
-
     assert list(chaser_instance.aia_chase_cert(leaf_cert)) == [leaf_cert, trusted_cert]
 
 
@@ -207,7 +196,11 @@ def test_http_handler_rejects_private_ip_before_opening_connection(
     )
 
     handler = AiaHTTPHandler()
-    handler.do_open = Mock(side_effect=AssertionError("private destination connected"))
+    monkeypatch.setattr(
+        handler,
+        "do_open",
+        Mock(side_effect=AssertionError("private destination connected")),
+    )
 
     with pytest.raises(NonGlobalAddressError):
         handler.http_open(Request("http://internal.example/issuer.crt"))
@@ -236,16 +229,20 @@ def test_http_handlers_pin_connection_to_validated_address(
     )
     fake_socket = MagicMock()
     monkeypatch.setattr(socket, "socket", Mock(return_value=fake_socket))
+
     handler = handler_type()
-    handler.do_open = Mock()
+    do_open_mock = Mock()
+    monkeypatch.setattr(handler, "do_open", do_open_mock)
+
     request = Request(url)  # noqa: S310
     request.timeout = None
 
     getattr(handler, method_name)(request)
 
-    connection_class = handler.do_open.call_args.args[0]
-    connection_kwargs = {"timeout": request.timeout}
-    connection_kwargs.update(handler.do_open.call_args.kwargs)
+    connection_class = do_open_mock.call_args.args[0]
+    connection_kwargs: dict[str, object] = {"timeout": request.timeout}
+    connection_kwargs.update(do_open_mock.call_args.kwargs)
+
     fake_context = None
     if method_name == "https_open":
         fake_context = MagicMock()
@@ -297,7 +294,7 @@ def test_download_uses_pinned_handlers_and_disables_proxy_in_strict_mode(
     proxy_handler = next(
         handler for handler in handlers if isinstance(handler, ProxyHandler)
     )
-    assert proxy_handler.proxies == {}
+    assert proxy_handler.proxies == {}  # type: ignore[attr-defined]
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
 
@@ -306,11 +303,11 @@ def test_strict_redirect_rejects_non_http_scheme() -> None:
 
     with pytest.raises(CertificateDownloadError):
         handler.redirect_request(
-            SimpleNamespace(),
-            None,
+            Request("http://public.example/original"),
+            BytesIO(),
             302,
             "Found",
-            {},
+            HTTPMessage(),
             "ftp://internal.example/",
         )
 
@@ -327,10 +324,10 @@ def test_strict_redirect_is_checked_when_its_protocol_handler_opens(
     handler = AiaRedirectHandler(allow_private_ip=False)
     redirect = handler.redirect_request(
         Request("http://public.example/original"),
-        None,
+        BytesIO(),
         302,
         "Found",
-        {},
+        HTTPMessage(),
         "http://internal.example/",
     )
     assert redirect is not None
@@ -340,35 +337,46 @@ def test_strict_redirect_is_checked_when_its_protocol_handler_opens(
         AiaHTTPHandler().http_open(redirect)
 
 
-@pytest.mark.parametrize("allow_private_ip", [True, False])
-def test_download_always_disables_environment_proxies(
+def test_proxy_handler_consults_environment_when_private_ips_are_allowed(
     monkeypatch: pytest.MonkeyPatch,
-    allow_private_ip: bool,  # noqa: FBT001
 ) -> None:
-    response = MagicMock(status=200)
-    response.__enter__.return_value = response
-    response.read.return_value = b"certificate"
-    opener = Mock()
-    opener.open.return_value = response
-    build_opener = Mock(return_value=opener)
+    """The default opener should honor proxies from the environment."""
+    environment_proxies = {"http": "http://proxy.example:8080"}
+    monkeypatch.setattr(
+        "urllib.request.getproxies",
+        Mock(return_value=environment_proxies),
+    )
+    build_opener = Mock()
     monkeypatch.setattr(http_pinning, "build_opener", build_opener)
-    monkeypatch.setattr(chaser, "_try_parse_certificate", Mock(return_value=[object()]))
-    chaser._download_certificate.cache_clear()  # noqa: SLF001
 
-    chaser._download_certificate(  # noqa: SLF001
-        f"http://no-proxy-{allow_private_ip}.example/cert",
-        allow_private_ip=allow_private_ip,
-    )
-
-    handlers = build_opener.call_args.args
+    http_pinning.build_certificate_opener(allow_private_ip=True)
     proxy_handler = next(
-        handler for handler in handlers if isinstance(handler, ProxyHandler)
+        handler
+        for handler in build_opener.call_args.args
+        if isinstance(handler, ProxyHandler)
     )
-    assert proxy_handler.proxies == {}
-    assert any(isinstance(handler, AiaHTTPHandler) for handler in handlers) is (
-        not allow_private_ip
+
+    assert proxy_handler.proxies == environment_proxies  # type: ignore[attr-defined]
+
+
+def test_proxy_handler_ignores_environment_when_private_ips_are_disallowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The strict opener should ignore proxies from the environment."""
+    monkeypatch.setattr(
+        "urllib.request.getproxies",
+        Mock(return_value={"http": "http://proxy.example:8080"}),
     )
-    chaser._download_certificate.cache_clear()  # noqa: SLF001
+    build_opener = Mock()
+    monkeypatch.setattr(http_pinning, "build_opener", build_opener)
+
+    http_pinning.build_certificate_opener(allow_private_ip=False)
+    proxy_handler = next(
+        handler
+        for handler in build_opener.call_args.args
+        if isinstance(handler, ProxyHandler)
+    )
+    assert proxy_handler.proxies == {}  # type: ignore[attr-defined]
 
 
 def test_download_certificate_warns_on_https(
@@ -488,15 +496,18 @@ def test_dns_rebinding_toctou_prevention_on_handlers(
     monkeypatch.setattr(socket, "socket", Mock(return_value=fake_socket))
 
     handler = handler_type()
-    handler.do_open = Mock()
+    do_open_mock = Mock()
+    monkeypatch.setattr(handler, "do_open", do_open_mock)
+
     request = Request(url)  # noqa: S310
     request.timeout = None
 
     getattr(handler, method_name)(request)
 
-    connection_class = handler.do_open.call_args.args[0]
-    connection_kwargs = {"timeout": request.timeout}
-    connection_kwargs.update(handler.do_open.call_args.kwargs)
+    connection_class = do_open_mock.call_args.args[0]
+    connection_kwargs: dict[str, object] = {"timeout": request.timeout}
+    connection_kwargs.update(do_open_mock.call_args.kwargs)
+
     if method_name == "https_open":
         fake_context = MagicMock()
         fake_context.wrap_socket.return_value = fake_socket
@@ -530,12 +541,13 @@ def test_dns_rebinding_toctou_prevention_on_fetch_host_cert(
     fake_socket = MagicMock()
     monkeypatch.setattr(socket, "socket", Mock(return_value=fake_socket))
 
-    chaser_obj = object.__new__(AiaChaser)
-    chaser_obj.allow_private_ip = False
+    chaser_obj = AiaChaser(allow_private_ip=False)
     mock_ssl_sock = MagicMock()
     mock_ssl_sock.__enter__.return_value = mock_ssl_sock
     mock_ssl_sock.getpeercert.return_value = None
-    chaser_obj._context = MagicMock(wrap_socket=Mock(return_value=mock_ssl_sock))
+    chaser_obj._context = MagicMock(  # noqa: SLF001
+        wrap_socket=Mock(return_value=mock_ssl_sock),
+    )
 
     with pytest.raises(chaser.MissingPeerCertificateError):
         chaser_obj.fetch_host_cert("rebind.example", 443)

@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+from typing import Sequence
 
 import pytest
+from cryptography import x509
 
 from aia_chaser import AiaChaser, VerifyCertificatesConfig, verify_certificate_chain
 from aia_chaser.exceptions import (
@@ -11,6 +13,15 @@ from aia_chaser.exceptions import (
 )
 
 from .conftest import EXPIRED_URLS, REVOKED_CRL_URLS, REVOKED_OCSP_URLS, TEST_URLS
+
+
+def _verification_time_for_chain(chain: Sequence[x509.Certificate]) -> datetime:
+    """Return a time within the chain's shared validity window, preferring now."""
+    valid_from = max(cert.not_valid_before_utc for cert in chain)
+    valid_until = min(cert.not_valid_after_utc for cert in chain)
+    assert valid_from <= valid_until
+    now = datetime.now(timezone.utc)
+    return max(valid_from, min(now, valid_until))
 
 
 @pytest.mark.parametrize("url_string", TEST_URLS)
@@ -80,13 +91,7 @@ def test_aia_chase_url_ocsp_revoked(url_string: str) -> None:
         verify=False,
     )
 
-    valid_from = max(cert.not_valid_before_utc for cert in chain)
-    valid_until = min(cert.not_valid_after_utc for cert in chain)
-    assert valid_from <= valid_until
-    verification_time = min(
-        max(datetime.now(timezone.utc), valid_from),  # noqa: UP017
-        valid_until,
-    )
+    verification_time = _verification_time_for_chain(chain)
 
     with pytest.raises(CertificateChainError) as exc_info:
         verify_certificate_chain(
@@ -108,13 +113,7 @@ def test_aia_chase_url_ignore_ocsp_revoked(url_string: str) -> None:
         verify=False,
     )
 
-    valid_from = max(cert.not_valid_before_utc for cert in chain)
-    valid_until = min(cert.not_valid_after_utc for cert in chain)
-    assert valid_from <= valid_until
-    verification_time = min(
-        max(datetime.now(timezone.utc), valid_from),  # noqa: UP017
-        valid_until,
-    )
+    verification_time = _verification_time_for_chain(chain)
     verify_certificate_chain(
         certificates=chain,
         trusted=chaser._trusted,  # noqa: SLF001
