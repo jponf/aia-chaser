@@ -40,7 +40,7 @@ from aia_chaser.utils.cert_utils import (
     load_ssl_ca_certificates,
 )
 from aia_chaser.utils.network import SocketAddressInfo, resolve_global_host
-from aia_chaser.utils.url import extract_host_port_from_url
+from aia_chaser.utils.url import extract_host_port_from_url, extract_scheme_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 from .utils.http_utils import validate_and_get_http_host_port
@@ -648,7 +648,7 @@ def _try_download_certificate(
                 http_url,
                 allow_private_ip=allow_private_ip,
             )
-        except (
+        except (  # noqa: PERF203
             CertificateDownloadError,
             CertificateParseError,
         ) as err:
@@ -703,13 +703,14 @@ def _download_certificate(
         CertificateDownloadError: If the URL scheme is unsupported,
             the download fails, or the certificate data cannot be parsed.
     """
-    if url_string.startswith("https:"):
+    scheme = extract_scheme_from_url(url_string)
+    if scheme == "https":
         warnings.warn(
             "Trying to download an intermediate CA certificate using HTTPS",
             category=UserWarning,
             stacklevel=2,
         )
-    elif not url_string.startswith("http:"):
+    elif scheme != "http":
         raise CertificateDownloadError(
             message="URL scheme must be http or https",
             url_string=url_string,
@@ -766,7 +767,7 @@ def _try_parse_certificate(data: bytes) -> list[x509.Certificate]:
     for parse_fn in _CERT_PARSE_FNS:
         try:
             return parse_fn(data)
-        except (ValueError, TypeError) as err:
+        except (ValueError, TypeError) as err:  # noqa: PERF203
             exceptions.append(err)
 
     raise CertificateParseError(reasons=[str(err) for err in exceptions])
