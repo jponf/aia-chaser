@@ -140,7 +140,7 @@ class AiaHTTPHandler(HTTPHandler):
             PinnedHTTPConnection,
             addresses=addresses,
         )
-        return self.do_open(http_class, req)  # type: ignore[arg-type]
+        return self.do_open(http_class, req)  # pyright: ignore[reportArgumentType]
 
 
 class AiaHTTPSHandler(HTTPSHandler):
@@ -160,7 +160,7 @@ class AiaHTTPSHandler(HTTPSHandler):
             addresses=addresses,
         )
         return self.do_open(
-            http_class,  # type: ignore[arg-type]
+            http_class,  # pyright: ignore[reportArgumentType]
             req,
             context=self._aia_context,
         )
