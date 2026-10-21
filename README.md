@@ -35,6 +35,23 @@ Python’s `requests` library. That is because browsers often handle AIA chasing
 automatically, while other tools don’t. If you’ve run into SSL errors like
 this, this package can help! :guide_dog:.
 
+## Network Access
+
+`AiaChaser` currently defaults to `allow_private_ip=True` for backwards
+compatibility. This will default to `False` in v4. To use the stricter policy
+now, set the option explicitly:
+
+```Python
+chaser = AiaChaser(allow_private_ip=False)
+```
+
+With this option disabled, `AiaChaser` validates DNS results and pins
+connections for both the initial host and AIA download URLs to globally
+routable unicast addresses. This mitigates SSRF by blocking connections to
+localhost, private networks, link-local services (including common cloud
+metadata endpoints), and multicast destinations. Public unicast hosts remain
+reachable; this is not an outbound host allowlist.
+
 ## Examples
 
 The following examples showcase how to use this library with some typical
