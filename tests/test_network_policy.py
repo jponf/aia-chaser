@@ -11,11 +11,8 @@ import pytest
 from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
 from aia_chaser.chaser import _AiaHTTPHandler, _AiaHTTPSHandler, _AiaRedirectHandler
 from aia_chaser.exceptions import CertificateDownloadError
-from aia_chaser.utils.url import (
-    extract_host_port_from_url,
-    is_global_address,
-    resolve_global_host,
-)
+from aia_chaser.utils.network import is_global_address, resolve_global_host
+from aia_chaser.utils.url import extract_host_port_from_url
 
 
 def _addrinfo(
@@ -180,7 +177,7 @@ def test_default_private_ip_option_preserves_aia_downloads(
     chaser._download_certificate.cache_clear()  # noqa: SLF001
 
     assert chaser._download_certificate(
-        "http://internal.example/issuer.crt"
+        "http://internal.example/issuer.crt",
     )  # noqa: SLF001
     opener.open.assert_called_once()
 
