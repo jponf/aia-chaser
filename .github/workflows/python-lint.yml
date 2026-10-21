@@ -32,8 +32,65 @@ jobs:
         run: poetry run black --check .
       - name: Check imports with isort
         run: poetry run isort --check-only .
+
+  type-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+      - name: Install dependencies
+        run: poetry install --with dev --with test
       - name: Type check with mypy
         run: poetry run mypy --install-types --non-interactive aia_chaser
+
+  lint-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+      - name: Install dependencies
+        run: poetry install --with dev --with test
+      - name: Lint tests with Ruff
+        run: poetry run ruff check tests
+
+  type-check-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        run: |
+          pip install --user pipx
+          pipx ensurepath
+          pipx install "poetry>=2"
+      - name: Install dependencies
+        run: poetry install --with dev --with test
+      - name: Type check tests with mypy
+        run: poetry run mypy --install-types --non-interactive tests
 
   test:
     runs-on: ubuntu-latest
