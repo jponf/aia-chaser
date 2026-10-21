@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import errno
 import ipaddress
 import socket
 import sys
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from aia_chaser.exceptions import NonGlobalAddressError
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 if sys.version_info < (3, 10):
@@ -29,6 +34,56 @@ else:
 
 _NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
 _NAT64_DISCOVERY = ipaddress.IPv6Network("64:ff9b:1::/48")
+
+
+def create_pinned_socket(
+    addresses: Sequence[SocketAddressInfo],
+    timeout: float | None,
+    source_address: tuple[str, int] | None,
+    *,
+    set_nodelay: bool = True,
+) -> socket.socket:
+    """Connect to the first successful pre-resolved socket address.
+
+    This connects directly to each supplied socket address without resolving a
+    hostname, preserving the caller's address pinning.
+
+    Args:
+        addresses: Socket addresses to try in order.
+        timeout: Timeout applied to each socket before connecting.
+        source_address: Optional local address to bind before connecting.
+        set_nodelay: Whether to enable TCP_NODELAY on the connected socket.
+
+    Returns:
+        The first successfully connected socket.
+
+    Raises:
+        OSError: If all supplied addresses fail to connect.
+        socket.gaierror: If no addresses are supplied.
+    """
+    connection_errors: list[OSError] = []
+    for family, socktype, protocol, _, sockaddr in addresses:
+        sock = socket.socket(family, socktype, protocol)
+        try:
+            sock.settimeout(timeout)
+            if source_address is not None:
+                sock.bind(source_address)
+            sock.connect(sockaddr)
+            if set_nodelay:
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except OSError as err:
+                    if err.errno != errno.ENOPROTOOPT:
+                        raise
+        except OSError as err:
+            sock.close()
+            connection_errors.append(err)
+        else:
+            return sock
+
+    if connection_errors:
+        raise connection_errors[-1]
+    raise socket.gaierror(socket.EAI_NONAME, "no addresses to connect to")
 
 
 def is_global_unicast_address(value: str | int) -> bool:
@@ -61,6 +116,11 @@ def is_global_unicast_address(value: str | int) -> bool:
             embedded_ipv4 = ipaddress.IPv4Address(address.packed[-4:])
         if embedded_ipv4 is not None:
             address = embedded_ipv4
+        elif address.is_site_local or address.is_reserved:
+            # fec0::/10 (RFC 3879) and ::/96 (RFC 4291) are deprecated and
+            # not globally routable, but is_global doesn't know that; these
+            # stdlib properties exist specifically to cover the gap.
+            return False
 
     if address.is_multicast:
         return False
@@ -102,3 +162,26 @@ def resolve_global_host(
             )
         global_addresses.append(cast("SocketAddressInfo", address_info))
     return global_addresses
+
+
+def create_global_unicast_connection(host: str, port: int) -> socket.socket:
+    """Resolve, validate, and connect to a globally routable unicast host.
+
+    The returned socket connects to one of the validated address records
+    directly, without a second hostname resolution.
+
+    Args:
+        host: Hostname or IP address to resolve and connect to.
+        port: Remote port to connect to.
+
+    Returns:
+        A connected socket to a validated global unicast address.
+
+    Raises:
+        socket.gaierror: If the host does not resolve to usable addresses.
+        NonGlobalAddressError: If any resolved address is not globally
+            routable unicast.
+        OSError: If connections to all validated addresses fail.
+    """
+    addresses = resolve_global_host(host, port)
+    return create_pinned_socket(addresses, timeout=None, source_address=None)

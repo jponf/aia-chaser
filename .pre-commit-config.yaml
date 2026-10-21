@@ -41,9 +41,9 @@ repos:
             notebooks/
           )
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6
+    rev: v0.17.1
     hooks:
-      - id: ruff # linter
+      - id: ruff-check # linter
       # - id: ruff-format
   - repo: local
     hooks:
