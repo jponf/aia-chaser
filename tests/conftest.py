@@ -13,8 +13,6 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509 import NameOID
 
-from aia_chaser.utils.network import SocketAddressInfo
-
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -23,6 +21,8 @@ if TYPE_CHECKING:
         RSAPrivateKey,
         RSAPublicKey,
     )
+
+    from aia_chaser.utils.network import SocketAddressInfo
 
 # Fake AIA CA issuer url for tests
 AIA_CA_ISSUER_URL = "http://ca.example/issuer.crt"
