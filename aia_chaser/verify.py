@@ -322,7 +322,7 @@ def verify_certificate_validity_period(
 
 def verify_crl_status(
     certificate: x509.Certificate,
-        verification_time: datetime.datetime | None = None,
+    verification_time: datetime.datetime | None = None,
     retry_config: RetryConfig | None = None,
     *,
     allow_private_ip: bool = True,

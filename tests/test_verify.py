@@ -214,8 +214,7 @@ def test_download_any_crl_dns_rebinding_toctou_prevention(
     http_response_data = (
         b"HTTP/1.1 200 OK\r\n"
         b"Content-Type: application/pkix-crl\r\n"
-        b"Content-Length: " + str(len(crl_bytes)).encode() + b"\r\n\r\n"
-        + crl_bytes
+        b"Content-Length: " + str(len(crl_bytes)).encode() + b"\r\n\r\n" + crl_bytes
     )
 
     fake_sock = MagicMock()
@@ -331,8 +330,7 @@ def test_ocsp_request_dns_rebinding_toctou_prevention(
     http_response_data = (
         b"HTTP/1.1 200 OK\r\n"
         b"Content-Type: application/ocsp-response\r\n"
-        b"Content-Length: " + str(len(resp_bytes)).encode() + b"\r\n\r\n"
-        + resp_bytes
+        b"Content-Length: " + str(len(resp_bytes)).encode() + b"\r\n\r\n" + resp_bytes
     )
 
     fake_sock = MagicMock()
