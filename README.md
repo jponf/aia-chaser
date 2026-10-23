@@ -46,11 +46,13 @@ chaser = AiaChaser(allow_private_ip=False)
 ```
 
 With this option disabled, `AiaChaser` validates DNS results and pins
-connections for both the initial host and AIA download URLs to globally
-routable unicast addresses. This mitigates SSRF by blocking connections to
-localhost, private networks, link-local services (including common cloud
-metadata endpoints), and multicast destinations. Public unicast hosts remain
-reachable; this is not an outbound host allowlist.
+connections for the initial host, AIA download URLs, and OCSP/CRL revocation
+endpoints to globally routable unicast addresses. This mitigates SSRF by blocking
+connections to localhost, private networks, link-local services (including
+common cloud metadata endpoints), and multicast destinations. Environment proxies
+are also ignored when this option is disabled to prevent bypassing address
+pinning. Public unicast hosts remain reachable; this is not an outbound host
+allowlist.
 
 ## Examples
 

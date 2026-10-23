@@ -16,6 +16,7 @@ from aia_chaser.utils.url import extract_scheme_host_port_from_url
 if TYPE_CHECKING:
     from http.client import HTTPResponse
     from typing import Final
+    from urllib.request import OpenerDirector
 
 # HTTP status codes of transient errors worth retrying
 RETRYABLE_STATUS_CODES: Final[frozenset[int]] = frozenset(
@@ -55,6 +56,7 @@ def urlopen_with_retry(
     url: str | Request,
     timeout: float | None = None,
     retry_config: RetryConfig | None = None,
+    opener: OpenerDirector | None = None,
 ) -> HTTPResponse:
     """Open a URL with automatic retry on transient HTTP errors.
 
@@ -66,6 +68,8 @@ def urlopen_with_retry(
         timeout: Optional timeout in seconds.
         retry_config: Optional retry configuration. If None, uses defaults.
             Set max_attempts=1 to disable retries.
+        opener: Optional OpenerDirector to open the URL. If None, uses
+            urllib.request.urlopen.
 
     Returns:
         HTTPResponse object.
@@ -84,9 +88,13 @@ def urlopen_with_retry(
         reraise=True,
     )
 
+    open_fn = opener.open if opener is not None else urlopen
+
     for attempt in retrying:
         with attempt:
-            return urlopen(url, timeout=timeout)  # noqa: S310
+            if timeout is not None:
+                return open_fn(url, timeout=timeout)
+            return open_fn(url)
 
     # Should never reach here, but for type checker
     msg = "Retry loop exited unexpectedly"
