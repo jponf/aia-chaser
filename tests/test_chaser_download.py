@@ -11,6 +11,7 @@ from aia_chaser import chaser
 from aia_chaser.exceptions import (
     AiaChaseExhaustedError,
     CertificateDownloadError,
+    InvalidUrlError,
     NonGlobalAddressError,
 )
 from aia_chaser.utils import http_pinning
@@ -168,10 +169,7 @@ def test_try_download_certificate_aggregates_non_global_url_failures(
 @pytest.mark.parametrize("url", ["ftp://example.com/cert.crt", "http"])
 def test_download_certificate_raises_on_invalid_scheme(url: str) -> None:
     """The downloader should reject unsupported or missing schemes."""
-    with pytest.raises(
-        CertificateDownloadError,
-        match="URL scheme must be http or https",
-    ):
+    with pytest.raises(InvalidUrlError, match="invalid HTTP URL"):
         chaser._download_certificate(url, opener=Mock())  # noqa: SLF001
 
 
