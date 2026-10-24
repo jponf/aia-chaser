@@ -17,7 +17,7 @@ async def test_aiohttp_with_ssl_context(url_string: str) -> None:
     context = chaser.make_ssl_context_for_url(url_string)
 
     async with (
-        aiohttp.ClientSession() as session,
+        aiohttp.ClientSession(max_line_size=65536, max_field_size=65536) as session,
         session.get(url_string, ssl=context) as response,
     ):
         assert response.status == HTTPStatus.OK

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import dataclasses
 import functools
 import http
 import http.client
@@ -64,10 +65,11 @@ class AiaChaser:
             default certificates.
         trusted_cas: Additional trusted CA certificates.
         allow_private_ip: Whether non-global IP addresses may be used for
-            the initial connection and AIA certificate downloads. Defaults
-            to True for backwards compatibility; this will default to False
-            in v4. When False, non-global DNS answers are discarded and the
-            hostname fails only if no global addresses remain.
+            the initial connection, AIA certificate downloads, and OCSP/CRL
+            revocation checks. Defaults to True for backwards compatibility;
+            this will default to False in v4. When False, non-global DNS
+            answers are discarded and the hostname fails only if no global
+            addresses remain.
     """
 
     def __init__(
@@ -279,10 +281,17 @@ class AiaChaser:
         """
         certificates = list(self.aia_chase(host, port))
         if verify:
+            config = verify_config or VerifyCertificatesConfig(
+                allow_private_ip=self.allow_private_ip,
+            )
+            # Enforce strict policy: if the chaser disallows private IPs,
+            # verification must not silently permit them via a config default.
+            if not self.allow_private_ip and config.allow_private_ip:
+                config = dataclasses.replace(config, allow_private_ip=False)
             verify_certificate_chain(
                 certificates=certificates,
                 trusted=self._trusted,
-                config=verify_config or VerifyCertificatesConfig(),
+                config=config,
             )
         return certificates
 

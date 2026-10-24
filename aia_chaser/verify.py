@@ -7,7 +7,8 @@ import itertools
 import secrets
 import warnings
 from typing import TYPE_CHECKING
-from urllib.request import HTTPError, Request
+from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
@@ -15,8 +16,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509 import ocsp
 
+from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT
 from aia_chaser.exceptions import (
     CertificateChainError,
+    CertificateDownloadError,
     CertificateExpiredError,
     CertificateFingerprintError,
     CertificateIssuerNameError,
@@ -28,6 +31,7 @@ from aia_chaser.exceptions import (
     CrlHttpError,
     CrlParseError,
     CrlRevokedError,
+    NonGlobalAddressError,
     OcspError,
     OcspHttpError,
     OcspResponderCertificateError,
@@ -43,7 +47,12 @@ from aia_chaser.utils.cert_utils import (
     extract_crl_urls,
     select_rsa_padding_for_signature_algorithm_oid,
 )
-from aia_chaser.utils.http_utils import RetryConfig, urlopen_with_retry
+from aia_chaser.utils.http_pinning import get_cached_certificate_opener
+from aia_chaser.utils.http_utils import (
+    RetryConfig,
+    urlopen_with_retry,
+    validate_and_get_http_host_port,
+)
 
 
 if TYPE_CHECKING:
@@ -82,6 +91,10 @@ class VerifyCertificatesConfig:
         retry_config: Configuration for HTTP retry behavior when downloading
             CRLs or making OCSP requests. Defaults to 3 attempts with
             exponential backoff.
+
+        allow_private_ip: Whether non-global IP addresses may be used for
+            revocation checks (OCSP and CRL). Defaults to True for backwards
+            compatibility; this will default to False in v4.
     """
 
     fingerprint_hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -104,6 +117,8 @@ class VerifyCertificatesConfig:
     retry_config: RetryConfig = dataclasses.field(
         default_factory=RetryConfig,
     )
+
+    allow_private_ip: bool = True
 
 
 def verify_certificate_chain(
@@ -153,6 +168,7 @@ def verify_certificate_chain(
                     certificate=issued,
                     verification_time=config.verification_time,
                     retry_config=config.retry_config,
+                    allow_private_ip=config.allow_private_ip,
                 )
             if config.ocsp_enabled:
                 verify_ocsp_status(
@@ -164,6 +180,7 @@ def verify_certificate_chain(
                         verify_responder=config.ocsp_verify_responder,
                         trusted=trusted or {},
                         retry_config=config.retry_config,
+                        allow_private_ip=config.allow_private_ip,
                     ),
                 )
 
@@ -305,8 +322,10 @@ def verify_certificate_validity_period(
 
 def verify_crl_status(
     certificate: x509.Certificate,
-    verification_time: datetime.datetime | None,
+    verification_time: datetime.datetime | None = None,
     retry_config: RetryConfig | None = None,
+    *,
+    allow_private_ip: bool = True,
 ) -> None:
     """Verifies the status of a certificate using revocation lists.
 
@@ -316,11 +335,17 @@ def verify_crl_status(
         verification_time: time at which the verification is being conducted.
             Defaults to `datetime.datetime.now(datetime.timezone.utc)`.
         retry_config: Configuration for HTTP retry behavior.
+        allow_private_ip: Whether non-global IP addresses may be used to
+            download the CRL. Defaults to True for backwards compatibility.
     """
     verification_time = verification_time or _get_default_verification_time()
     crl_urls = extract_crl_urls(certificate)
 
-    crl = _download_any_crl(crl_urls, retry_config=retry_config)
+    crl = _download_any_crl(
+        crl_urls,
+        retry_config=retry_config,
+        allow_private_ip=allow_private_ip,
+    )
     next_update = _get_crl_next_update(crl)
     if next_update and verification_time > next_update:
         warnings.warn(
@@ -349,18 +374,30 @@ def verify_crl_status(
 def _download_any_crl(
     crl_urls: Sequence[str],
     retry_config: RetryConfig | None = None,
+    *,
+    allow_private_ip: bool = True,
 ) -> x509.CertificateRevocationList:
     last_idx = len(crl_urls) - 1
+    opener = get_cached_certificate_opener(allow_private_ip=allow_private_ip)
 
     for idx, url in enumerate(crl_urls):
         try:
-            with urlopen_with_retry(url, retry_config=retry_config) as response:
+            validate_and_get_http_host_port(url)
+            with urlopen_with_retry(
+                url,
+                timeout=DEFAULT_URLOPEN_TIMEOUT,
+                retry_config=retry_config,
+                opener=opener,
+            ) as response:
                 crl_data = response.read()
                 return _try_parse_crl(crl_data)
         except HTTPError as err:  # noqa: PERF203
             if idx == last_idx:
                 raise CrlHttpError(crl_url=url, http_status=err.code) from None
         except CrlParseError:
+            if idx == last_idx:
+                raise
+        except (CertificateDownloadError, NonGlobalAddressError, URLError):
             if idx == last_idx:
                 raise
 
@@ -420,6 +457,9 @@ class VerifyOcspConfig:
 
         retry_config: Configuration for HTTP retry behavior when making
             OCSP requests. Defaults to 3 attempts with exponential backoff.
+
+        allow_private_ip: Whether non-global IP addresses may be used for
+            OCSP requests. Defaults to True for backwards compatibility.
     """
 
     hash_alg: hashes.HashAlgorithm = dataclasses.field(
@@ -436,6 +476,8 @@ class VerifyOcspConfig:
     retry_config: RetryConfig = dataclasses.field(
         default_factory=RetryConfig,
     )
+
+    allow_private_ip: bool = True
 
     def __post_init__(self) -> None:  # noqa: D105
         if self.nonce_size < 1:
@@ -516,6 +558,7 @@ def _run_ocsp_request(
     issuer: x509.Certificate,
     config: VerifyOcspConfig,
 ) -> ocsp.OCSPCertStatus:
+    validate_and_get_http_host_port(ocsp_url)
     http_request = Request(  # noqa: S310
         url=ocsp_url,
         data=ocsp_request.public_bytes(serialization.Encoding.DER),
@@ -523,10 +566,15 @@ def _run_ocsp_request(
         method="POST",
     )
 
+    opener = get_cached_certificate_opener(
+        allow_private_ip=config.allow_private_ip,
+    )
     try:
         with urlopen_with_retry(
             http_request,
+            timeout=DEFAULT_URLOPEN_TIMEOUT,
             retry_config=config.retry_config,
+            opener=opener,
         ) as response:
             ocsp_response_data = response.read()
     except HTTPError as err:
