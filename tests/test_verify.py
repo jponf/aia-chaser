@@ -15,10 +15,12 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from aia_chaser import verify
 from aia_chaser.exceptions import (
     CertificateChainError,
-    CertificateDownloadError,
     CertificateExpiredError,
     CertificateTimeZoneError,
+    CrlDownloadError,
+    InvalidUrlError,
     NonGlobalAddressError,
+    OcspDownloadError,
     RootCertificateNotFoundError,
 )
 from aia_chaser.utils.http_pinning import get_cached_certificate_opener
@@ -146,11 +148,10 @@ def test_verify_chain_of_2_root_trusted(
 )
 def test_download_any_crl_rejects_non_http_scheme(url: str) -> None:
     """_download_any_crl must reject non-http schemes."""
-    with pytest.raises(CertificateDownloadError):
-        _download_any_crl([url], allow_private_ip=True)
-
-    with pytest.raises(CertificateDownloadError):
-        _download_any_crl([url], allow_private_ip=False)
+    for allow_private_ip in (True, False):
+        with pytest.raises(CrlDownloadError) as exc_info:
+            _download_any_crl([url], allow_private_ip=allow_private_ip)
+        assert isinstance(exc_info.value.reason, InvalidUrlError)
 
 
 def test_download_any_crl_falls_back_after_invalid_scheme(
@@ -190,8 +191,9 @@ def test_download_any_crl_strict_rejects_private_ip(
         Mock(return_value=[make_addrinfo(private_ip)]),
     )
 
-    with pytest.raises(NonGlobalAddressError):
+    with pytest.raises(CrlDownloadError) as exc_info:
         _download_any_crl(["http://internal.example/crl.crl"], allow_private_ip=False)
+    assert isinstance(exc_info.value.reason, NonGlobalAddressError)
 
 
 @pytest.mark.parametrize(
@@ -267,13 +269,14 @@ def test_ocsp_request_rejects_non_http_scheme(
     builder = builder.add_certificate(leaf_cert, root_cert, hashes.SHA256())
     ocsp_req = builder.build()
 
-    with pytest.raises(CertificateDownloadError):
+    with pytest.raises(OcspDownloadError) as exc_info:
         _run_ocsp_request(
             ocsp_request=ocsp_req,
             ocsp_url=url,
             issuer=root_cert,
             config=VerifyOcspConfig(allow_private_ip=True),
         )
+    assert isinstance(exc_info.value.reason, InvalidUrlError)
 
 
 @pytest.mark.parametrize(
@@ -297,13 +300,14 @@ def test_ocsp_request_strict_rejects_private_ip(
         Mock(return_value=[make_addrinfo(private_ip)]),
     )
 
-    with pytest.raises(NonGlobalAddressError):
+    with pytest.raises(OcspDownloadError) as exc_info:
         _run_ocsp_request(
             ocsp_request=ocsp_req,
             ocsp_url="http://internal.example/ocsp",
             issuer=root_cert,
             config=VerifyOcspConfig(allow_private_ip=False),
         )
+    assert isinstance(exc_info.value.reason, NonGlobalAddressError)
 
 
 @pytest.mark.parametrize(

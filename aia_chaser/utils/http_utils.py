@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential
 
-from aia_chaser.exceptions import CertificateDownloadError
+from aia_chaser.exceptions import InvalidUrlError
 from aia_chaser.utils.url import extract_scheme_host_port_from_url
 
 
@@ -114,19 +114,19 @@ def validate_and_get_http_host_port(url_string: str) -> tuple[str, int]:
         The host and port extracted from `url_string`.
 
     Raises:
-        CertificateDownloadError: If the URL is malformed, missing a host,
+        InvalidUrlError: If the URL is malformed, missing a host,
             or uses a scheme other than HTTP or HTTPS.
     """
     try:
         scheme, host, port = extract_scheme_host_port_from_url(url_string)
     except ValueError as err:
-        raise CertificateDownloadError(
+        raise InvalidUrlError(
             message=f"invalid HTTP URL: {url_string}",
             url_string=url_string,
         ) from err
 
     if scheme not in ("http", "https"):
-        raise CertificateDownloadError(
+        raise InvalidUrlError(
             message=f"invalid HTTP URL: {url_string}",
             url_string=url_string,
         )

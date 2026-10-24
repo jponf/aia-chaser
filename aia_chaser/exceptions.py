@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import datetime as dt
     from collections.abc import Sequence
+    from urllib.error import URLError
 
     from cryptography.x509.ocsp import OCSPResponseStatus
 
@@ -40,6 +41,22 @@ class MissingPeerCertificateError(AiaChaserError):
 
         self.host = host
         self.port = port
+
+
+class InvalidUrlError(AiaChaserError):
+    """A URL is malformed, missing a host, or uses a disallowed scheme.
+
+    Raised by low-level URL validation before any network connection
+    is attempted.
+
+    Args:
+        message: Description of why the URL is invalid.
+        url_string: The URL that failed validation.
+    """
+
+    def __init__(self, message: str, url_string: str) -> None:
+        super().__init__(message)
+        self.url_string = url_string
 
 
 class CertificateDownloadError(AiaChaserError):
@@ -93,7 +110,10 @@ class AiaChaseExhaustedError(AiaChaserError):
     def __init__(
         self,
         errors: Sequence[
-            CertificateDownloadError | CertificateParseError | NonGlobalAddressError
+            CertificateDownloadError
+            | CertificateParseError
+            | NonGlobalAddressError
+            | InvalidUrlError
         ],
     ) -> None:
         super().__init__("AIA chasing failed after exhausting all CA urls")
@@ -244,6 +264,24 @@ class CrlHttpError(CrlError):
         self.http_status = http_status
 
 
+class CrlDownloadError(CrlError):
+    """CRL download failed: invalid URL, blocked address, or network error.
+
+    Args:
+        crl_url: CRL endpoint url.
+        reason: Underlying error that caused the download to fail.
+    """
+
+    def __init__(
+        self,
+        crl_url: str,
+        reason: InvalidUrlError | NonGlobalAddressError | URLError,
+    ) -> None:
+        super().__init__(f"could not download CRL from {crl_url}: {reason}")
+        self.crl_url = crl_url
+        self.reason = reason
+
+
 class CrlParseError(CrlError):
     """Error parsing a certificate."""
 
@@ -300,6 +338,24 @@ class OcspHttpError(OcspError):
         )
         self.ocsp_url = ocsp_url
         self.http_status = http_status
+
+
+class OcspDownloadError(OcspError):
+    """OCSP request failed: invalid URL, blocked address, or network error.
+
+    Args:
+        ocsp_url: OCSP endpoint url.
+        reason: Underlying error that caused the request to fail.
+    """
+
+    def __init__(
+        self,
+        ocsp_url: str,
+        reason: InvalidUrlError | NonGlobalAddressError | URLError,
+    ) -> None:
+        super().__init__(f"could not reach OCSP responder {ocsp_url}: {reason}")
+        self.ocsp_url = ocsp_url
+        self.reason = reason
 
 
 class OcspResponseStatusError(OcspError):

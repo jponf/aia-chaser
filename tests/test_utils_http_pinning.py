@@ -9,7 +9,7 @@ from urllib.request import ProxyHandler, Request
 import pytest
 
 from aia_chaser import NonGlobalAddressError
-from aia_chaser.exceptions import CertificateDownloadError
+from aia_chaser.exceptions import InvalidUrlError
 from aia_chaser.utils import http_pinning
 from aia_chaser.utils.http_pinning import (
     AiaHTTPHandler,
@@ -110,7 +110,7 @@ def test_http_handlers_pin_connection_to_validated_address(
 def test_strict_redirect_rejects_non_http_scheme() -> None:
     handler = AiaRedirectHandler(allow_private_ip=False)
 
-    with pytest.raises(CertificateDownloadError):
+    with pytest.raises(InvalidUrlError):
         handler.redirect_request(
             Request("http://public.example/original"),
             BytesIO(),

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import datetime
+import datetime as dt
 import itertools
 import secrets
 import warnings
@@ -19,7 +19,6 @@ from cryptography.x509 import ocsp
 from aia_chaser.constants import DEFAULT_URLOPEN_TIMEOUT
 from aia_chaser.exceptions import (
     CertificateChainError,
-    CertificateDownloadError,
     CertificateExpiredError,
     CertificateFingerprintError,
     CertificateIssuerNameError,
@@ -28,10 +27,13 @@ from aia_chaser.exceptions import (
     CertificateSignatureError,
     CertificateTimeZoneError,
     CertificateVerificationError,
+    CrlDownloadError,
     CrlHttpError,
     CrlParseError,
     CrlRevokedError,
+    InvalidUrlError,
     NonGlobalAddressError,
+    OcspDownloadError,
     OcspError,
     OcspHttpError,
     OcspResponderCertificateError,
@@ -59,8 +61,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
 
-def _get_default_verification_time() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+def _get_default_verification_time() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
 
 
 @dataclasses.dataclass
@@ -110,7 +112,7 @@ class VerifyCertificatesConfig:
     ocsp_ignore_unknown: bool = True
     ocsp_verify_responder: bool = True
 
-    verification_time: datetime.datetime = dataclasses.field(
+    verification_time: dt.datetime = dataclasses.field(
         default_factory=_get_default_verification_time,
     )
 
@@ -238,7 +240,7 @@ def verify_directly_issued_by(
 def verify_root_certificate(
     root_cert: x509.Certificate,
     trusted: Mapping[x509.Name, x509.Certificate],
-    verification_time: datetime.datetime | None = None,
+    verification_time: dt.datetime | None = None,
     hash_alg: hashes.HashAlgorithm | None = None,
 ) -> None:
     """Verifies the validity of the provided root certificate.
@@ -285,7 +287,7 @@ def verify_root_certificate(
 
 def verify_certificate_validity_period(
     certificate: x509.Certificate,
-    verification_time: datetime.datetime | None = None,
+    verification_time: dt.datetime | None = None,
 ) -> None:
     """Verifies certificate validity period (not valid before/after).
 
@@ -322,7 +324,7 @@ def verify_certificate_validity_period(
 
 def verify_crl_status(
     certificate: x509.Certificate,
-    verification_time: datetime.datetime | None = None,
+    verification_time: dt.datetime | None = None,
     retry_config: RetryConfig | None = None,
     *,
     allow_private_ip: bool = True,
@@ -393,11 +395,11 @@ def _download_any_crl(
                 return _try_parse_crl(crl_data)
         except HTTPError as err:  # noqa: PERF203
             if idx == last_idx:
-                raise CrlHttpError(crl_url=url, http_status=err.code) from None
-        except CrlParseError:
+                raise CrlHttpError(crl_url=url, http_status=err.code) from err
+        except (InvalidUrlError, NonGlobalAddressError, URLError) as err:
             if idx == last_idx:
-                raise
-        except (CertificateDownloadError, NonGlobalAddressError, URLError):
+                raise CrlDownloadError(crl_url=url, reason=err) from err
+        except CrlParseError:
             if idx == last_idx:
                 raise
 
@@ -505,6 +507,9 @@ def verify_ocsp_status(
             and `ignore_unknown` is False.
         OcspHttpError:
             An HTTP error happened while requesting the OCSP status.
+        OcspDownloadError:
+            The OCSP URL is invalid, resolves to a disallowed address, or
+            the request failed at the network level.
         OcspResponseStatusError:
             The OCSP response status is not `SUCCESSFUL`.
         OcspResponseUnsignedError:
@@ -558,7 +563,11 @@ def _run_ocsp_request(
     issuer: x509.Certificate,
     config: VerifyOcspConfig,
 ) -> ocsp.OCSPCertStatus:
-    validate_and_get_http_host_port(ocsp_url)
+    try:
+        validate_and_get_http_host_port(ocsp_url)
+    except InvalidUrlError as err:
+        raise OcspDownloadError(ocsp_url=ocsp_url, reason=err) from err
+
     http_request = Request(  # noqa: S310
         url=ocsp_url,
         data=ocsp_request.public_bytes(serialization.Encoding.DER),
@@ -578,7 +587,9 @@ def _run_ocsp_request(
         ) as response:
             ocsp_response_data = response.read()
     except HTTPError as err:
-        raise OcspHttpError(ocsp_url=ocsp_url, http_status=err.code) from None
+        raise OcspHttpError(ocsp_url=ocsp_url, http_status=err.code) from err
+    except (InvalidUrlError, NonGlobalAddressError, URLError) as err:
+        raise OcspDownloadError(ocsp_url=ocsp_url, reason=err) from err
 
     ocsp_resp = ocsp.load_der_ocsp_response(ocsp_response_data)
     if ocsp_resp.response_status != ocsp.OCSPResponseStatus.SUCCESSFUL:
@@ -684,29 +695,29 @@ def _verify_ocsp_responder_certificate(
 # not_valid_after_utc.
 if hasattr(x509.Certificate, "not_valid_before_utc"):
 
-    def _get_not_valid_before(cert: x509.Certificate) -> datetime.datetime:
+    def _get_not_valid_before(cert: x509.Certificate) -> dt.datetime:
         return cert.not_valid_before_utc
 
-    def _get_not_valid_after(cert: x509.Certificate) -> datetime.datetime:
+    def _get_not_valid_after(cert: x509.Certificate) -> dt.datetime:
         return cert.not_valid_after_utc
 
     def _get_crl_next_update(
         crl: x509.CertificateRevocationList,
-    ) -> datetime.datetime | None:
+    ) -> dt.datetime | None:
         return crl.next_update_utc
 
 else:
 
-    def _get_not_valid_before(cert: x509.Certificate) -> datetime.datetime:
-        return cert.not_valid_before.replace(tzinfo=datetime.timezone.utc)
+    def _get_not_valid_before(cert: x509.Certificate) -> dt.datetime:
+        return cert.not_valid_before.replace(tzinfo=dt.timezone.utc)
 
-    def _get_not_valid_after(cert: x509.Certificate) -> datetime.datetime:
-        return cert.not_valid_after.replace(tzinfo=datetime.timezone.utc)
+    def _get_not_valid_after(cert: x509.Certificate) -> dt.datetime:
+        return cert.not_valid_after.replace(tzinfo=dt.timezone.utc)
 
     def _get_crl_next_update(
         crl: x509.CertificateRevocationList,
-    ) -> datetime.datetime | None:
+    ) -> dt.datetime | None:
         next_update = crl.next_update
         if next_update is not None:
-            return next_update.replace(tzinfo=datetime.timezone.utc)
+            return next_update.replace(tzinfo=dt.timezone.utc)
         return next_update

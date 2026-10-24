@@ -20,6 +20,7 @@ from aia_chaser.exceptions import (
     AiaChaseExhaustedError,
     CertificateDownloadError,
     CertificateParseError,
+    InvalidUrlError,
     MissingPeerCertificateError,
     NonGlobalAddressError,
     NoValidAiaCaUrlError,
@@ -522,6 +523,7 @@ def try_download_certificate(
             CertificateDownloadError,
             CertificateParseError,
             NonGlobalAddressError,
+            InvalidUrlError,
         ) as err:
             errors.append(err)
 
