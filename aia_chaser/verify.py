@@ -563,24 +563,18 @@ def _run_ocsp_request(
     issuer: x509.Certificate,
     config: VerifyOcspConfig,
 ) -> ocsp.OCSPCertStatus:
-    try:
-        validate_and_get_http_host_port(ocsp_url)
-    except InvalidUrlError as err:
-        raise OcspDownloadError(ocsp_url=ocsp_url, reason=err) from err
-
-    http_request = Request(  # noqa: S310
-        url=ocsp_url,
-        data=ocsp_request.public_bytes(serialization.Encoding.DER),
-        headers={"Content-Type": "application/ocsp-request"},
-        method="POST",
-    )
-
     opener = get_cached_certificate_opener(
         allow_private_ip=config.allow_private_ip,
     )
     try:
+        validate_and_get_http_host_port(ocsp_url)
         with urlopen_with_retry(
-            http_request,
+            Request(  # noqa: S310
+                url=ocsp_url,
+                data=ocsp_request.public_bytes(serialization.Encoding.DER),
+                headers={"Content-Type": "application/ocsp-request"},
+                method="POST",
+            ),
             timeout=DEFAULT_URLOPEN_TIMEOUT,
             retry_config=config.retry_config,
             opener=opener,
