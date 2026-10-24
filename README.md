@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-darkgoldenrod.svg)](https://opensource.org/licenses/MIT)
 [![Linter: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)\
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
 [
@@ -126,7 +126,8 @@ url = "https://..."
 
 chaser = AiaChaser()
 context = chaser.make_ssl_context_for_url(url)
-async with aiohttp.ClientSession() as session:
+# Note: increase max_line_size/max_field_size if the host returns large headers (e.g. CSP)
+async with aiohttp.ClientSession(max_line_size=65536, max_field_size=65536) as session:
     async with session.get(url, ssl=context) as response:
         data = await response.text()
 ```
