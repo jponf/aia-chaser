@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import socket
+import ssl
 from typing import TYPE_CHECKING
 
+import certifi
 import faker
 import pytest
 from cryptography import x509
@@ -13,9 +15,12 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509 import NameOID
 
+from aia_chaser import AiaChaser
+from aia_chaser.utils.cert_utils import load_ssl_ca_certificates
+
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from cryptography.hazmat.primitives.asymmetric.rsa import (
         RSAPrivateKey,
@@ -198,3 +203,24 @@ def host_and_ca_chain(
         ),
         root_ca,
     ]
+
+
+@pytest.fixture(scope="session")
+def certifi_context() -> ssl.SSLContext:
+    context = ssl.create_default_context(cafile=certifi.where())
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+@pytest.fixture
+def chaser(certifi_context: ssl.SSLContext) -> AiaChaser:
+    return AiaChaser(context=certifi_context)
+
+
+@pytest.fixture(scope="session")
+def certifi_trusted(
+    certifi_context: ssl.SSLContext,
+) -> Mapping[x509.Name, x509.Certificate]:
+    certs = load_ssl_ca_certificates(certifi_context, force_load=False)
+    return {cert.subject: cert for cert in certs}
