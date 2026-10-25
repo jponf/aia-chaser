@@ -45,14 +45,18 @@ now, set the option explicitly:
 chaser = AiaChaser(allow_private_ip=False)
 ```
 
-With this option disabled, `AiaChaser` validates DNS results and pins
-connections for the initial host, AIA download URLs, and OCSP/CRL revocation
-endpoints to globally routable unicast addresses. This mitigates SSRF by blocking
-connections to localhost, private networks, link-local services (including
-common cloud metadata endpoints), and multicast destinations. Environment proxies
-are also ignored when this option is disabled to prevent bypassing address
-pinning. Public unicast hosts remain reachable; this is not an outbound host
-allowlist.
+Regardless of `allow_private_ip`, AiaChaser's own downloads (AIA CA issuers,
+OCSP, and CRL) only use HTTP and HTTPS: `file://`, `ftp://`, and `data:` URLs
+are rejected, and redirects to other schemes are not followed.
+
+With this option disabled, `AiaChaser` additionally validates DNS results and
+pins connections for the initial host, AIA download URLs, and OCSP/CRL
+revocation endpoints to globally routable unicast addresses. This mitigates
+SSRF by blocking connections to localhost, private networks, link-local
+services (including common cloud metadata endpoints), and multicast
+destinations. Environment proxies are also ignored when this option is
+disabled to prevent bypassing address pinning. Public unicast hosts remain
+reachable; this is not an outbound host allowlist.
 
 ## Examples
 
