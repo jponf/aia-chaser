@@ -22,6 +22,8 @@ if TYPE_CHECKING:
         RSAPublicKey,
     )
 
+    from aia_chaser.utils.network import SocketAddressInfo
+
 # Fake AIA CA issuer url for tests
 AIA_CA_ISSUER_URL = "http://ca.example/issuer.crt"
 
@@ -89,7 +91,7 @@ REVOKED_OCSP_URLS = (
 
 def make_addrinfo(
     address: str,
-) -> tuple[int, int, int, str, tuple[str, int] | tuple[str, int, int, int]]:
+) -> SocketAddressInfo:
     family = socket.AF_INET6 if ":" in address else socket.AF_INET
     sockaddr = (address, 0, 0, 0) if family == socket.AF_INET6 else (address, 0)
     return family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", sockaddr

@@ -3,6 +3,8 @@ black==24.10.0 ; python_full_version > "3.9.0" and python_full_version != "3.9.1
 boolean-py==5.0 ; python_full_version > "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
 cachecontrol==0.14.3 ; python_full_version > "3.9.0" and python_full_version != "3.9.1" and python_version < "3.10"
 cachecontrol==0.14.4 ; python_version >= "3.10" and python_version < "4.0"
+cachetools==6.2.6 ; python_full_version > "3.9.0" and python_full_version != "3.9.1" and python_version < "3.10"
+cachetools==7.2.5 ; python_version >= "3.10" and python_version < "4.0"
 certifi==2026.10.19 ; python_full_version > "3.9.0" and python_full_version != "3.9.1" and python_version < "4.0"
 cffi==2.0.0 ; python_full_version > "3.9.0" and python_full_version != "3.9.1" and python_version < "3.10" and platform_python_implementation != "PyPy"
 cffi==2.1.1 ; python_version >= "3.10" and python_version < "4.0" and platform_python_implementation != "PyPy"

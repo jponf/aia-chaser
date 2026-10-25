@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import collections
 import contextlib
-import functools
+import dataclasses
 import http
 import http.client
 import socket
 import ssl
 import warnings
+from threading import RLock
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.error import URLError
 
+from cachetools import TTLCache, cached
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
 
@@ -19,6 +21,7 @@ from aia_chaser.exceptions import (
     AiaChaseExhaustedError,
     CertificateDownloadError,
     CertificateParseError,
+    InvalidUrlError,
     MissingPeerCertificateError,
     NonGlobalAddressError,
     NoValidAiaCaUrlError,
@@ -30,6 +33,7 @@ from aia_chaser.utils.cert_utils import (
     load_ssl_ca_certificates,
 )
 from aia_chaser.utils.http_pinning import get_cached_certificate_opener
+from aia_chaser.utils.http_utils import RetryConfig, http_urlopen_with_retry
 from aia_chaser.utils.network import create_global_unicast_connection
 from aia_chaser.utils.url import extract_host_port_from_url, extract_scheme_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
@@ -37,7 +41,6 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from urllib.request import OpenerDirector
 
 
 __all__ = ["AiaChaser"]
@@ -63,11 +66,15 @@ class AiaChaser:
             root CAs. If not given a new SSLContext is created with the
             default certificates.
         trusted_cas: Additional trusted CA certificates.
+        retry_config: Retry settings for AIA downloads on cache misses. None
+            uses defaults (see
+            [`RetryConfig`][aia_chaser.utils.http_utils.RetryConfig]).
         allow_private_ip: Whether non-global IP addresses may be used for
-            the initial connection and AIA certificate downloads. Defaults
-            to True for backwards compatibility; this will default to False
-            in v4. When False, non-global DNS answers are discarded and the
-            hostname fails only if no global addresses remain.
+            the initial connection, AIA certificate downloads, and OCSP/CRL
+            revocation checks. Defaults to True for backwards compatibility;
+            this will default to False in v4. When False, non-global DNS
+            answers are discarded and the hostname fails only if no global
+            addresses remain.
     """
 
     def __init__(
@@ -76,8 +83,10 @@ class AiaChaser:
         trusted_cas: Sequence[x509.Certificate] | None = None,
         *,
         allow_private_ip: bool = True,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         self.allow_private_ip = allow_private_ip
+        self.retry_config = retry_config
         trusted_cas = trusted_cas or []
 
         if context is None:
@@ -179,6 +188,7 @@ class AiaChaser:
                 try_download_certificate(
                     cert_info.aia_ca_issuers,
                     allow_private_ip=self.allow_private_ip,
+                    retry_config=self.retry_config,
                 ),
             )
 
@@ -265,7 +275,10 @@ class AiaChaser:
             host: The hostname to fetch the certificate chain for.
             port: The port to connect to. Defaults to 443.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the certificate chain. Defaults to True.
 
         Returns:
@@ -279,10 +292,17 @@ class AiaChaser:
         """
         certificates = list(self.aia_chase(host, port))
         if verify:
+            config = verify_config or VerifyCertificatesConfig(
+                allow_private_ip=self.allow_private_ip,
+            )
+            # Enforce strict policy: if the chaser disallows private IPs,
+            # verification must not silently permit them via a config default.
+            if not self.allow_private_ip and config.allow_private_ip:
+                config = dataclasses.replace(config, allow_private_ip=False)
             verify_certificate_chain(
                 certificates=certificates,
                 trusted=self._trusted,
-                config=verify_config or VerifyCertificatesConfig(),
+                config=config,
             )
         return certificates
 
@@ -304,7 +324,10 @@ class AiaChaser:
             host: The hostname to fetch the CA certificate chain for.
             port: The port to connect to. Defaults to 443.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the CA certificate chain. Defaults to True.
 
         Returns:
@@ -338,7 +361,10 @@ class AiaChaser:
         Args:
             url_string: URL to fetch the certificate chain for.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the certificate chain. Defaults to True.
 
         Returns:
@@ -373,7 +399,10 @@ class AiaChaser:
         Args:
             url_string: URL to fetch the CA certificate chain for.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the CA certificate chain. Defaults to True.
 
         Returns:
@@ -488,6 +517,7 @@ def try_download_certificate(
     urls: Sequence[str],
     *,
     allow_private_ip: bool = True,
+    retry_config: RetryConfig | None = None,
 ) -> list[x509.Certificate]:
     """Try AIA URLs until one downloads and parses successfully.
 
@@ -497,6 +527,8 @@ def try_download_certificate(
 
     Args:
         urls: AIA certificate URLs to try in order.
+        retry_config: Retry settings for cache misses. None uses defaults (see
+            [`RetryConfig`][aia_chaser.utils.http_utils.RetryConfig]).
         allow_private_ip: Whether downloads may connect to non-global IP
             addresses. If False, non-global DNS answers are skipped.
     """
@@ -504,42 +536,66 @@ def try_download_certificate(
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
 
-    opener = get_cached_certificate_opener(allow_private_ip=allow_private_ip)
     errors = []
     for http_url in http_urls:
         try:
-            return _download_certificate(http_url, opener=opener)
+            return _download_certificate(
+                http_url,
+                allow_private_ip=allow_private_ip,
+                retry_config=retry_config,
+            )
         except (  # noqa: PERF203
             CertificateDownloadError,
             CertificateParseError,
             NonGlobalAddressError,
+            InvalidUrlError,
         ) as err:
             errors.append(err)
 
     raise AiaChaseExhaustedError(errors=errors)
 
 
-@functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
+@cached(
+    cache=TTLCache(
+        maxsize=DOWNLOAD_CACHE_SIZE,
+        ttl=12 * 60 * 60,
+    ),
+    key=lambda url_string, *, allow_private_ip=True, **_kwargs: (
+        url_string,
+        allow_private_ip,
+    ),
+    lock=RLock(),
+)
 def _download_certificate(
     url_string: str,
     *,
-    opener: OpenerDirector,
+    allow_private_ip: bool = True,
+    retry_config: RetryConfig | None = None,
 ) -> list[x509.Certificate]:
     """Download and parse X.509 certificates from an AIA URL.
 
+    Successful results are cached by URL and private IP policy for 12 hours.
+    Cache hits do not perform network requests or reapply the address policy.
+
     Args:
         url_string: URL pointing to the certificate to download.
-        opener: Opener configured for the address policy.
+        retry_config: Retry settings for cache misses, excluded from the cache
+            key.
+        allow_private_ip: Whether non-global IP addresses may be used.
+            Also partitions the cache by address policy.
 
     Returns:
         A list of parsed X.509 certificates.
 
     Raises:
-        CertificateDownloadError: If the URL scheme is unsupported,
-            the download fails, or the certificate data cannot be parsed.
+        CertificateDownloadError: If the download fails, or the certificate
+            data cannot be parsed.
+        InvalidUrlError: If the URL scheme is unsupported or the URL is
+            malformed.
         NonGlobalAddressError: If the configured opener rejects the URL host
             because it resolves to a non-global address.
     """
+    opener = get_cached_certificate_opener(allow_private_ip=allow_private_ip)
     scheme = extract_scheme_from_url(url_string)
     if scheme == "https":
         warnings.warn(
@@ -547,16 +603,13 @@ def _download_certificate(
             category=UserWarning,
             stacklevel=2,
         )
-    elif scheme != "http":
-        raise CertificateDownloadError(
-            message="URL scheme must be http or https",
-            url_string=url_string,
-        )
 
     try:
-        with opener.open(
+        with http_urlopen_with_retry(
             url_string,
             timeout=DEFAULT_URLOPEN_TIMEOUT,
+            opener=opener,
+            retry_config=retry_config,
         ) as response:
             if response.status != http.HTTPStatus.OK:
                 raise CertificateDownloadError(

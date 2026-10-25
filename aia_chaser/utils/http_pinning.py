@@ -3,10 +3,13 @@ from __future__ import annotations
 import functools
 import http.client
 from typing import TYPE_CHECKING
+from urllib.error import URLError
 from urllib.request import (
     BaseHandler,
+    DataHandler,
+    FileHandler,
+    FTPHandler,
     HTTPHandler,
-    HTTPRedirectHandler,
     HTTPSHandler,
     OpenerDirector,
     ProxyHandler,
@@ -25,31 +28,33 @@ if TYPE_CHECKING:
     import socket
     import ssl
     from collections.abc import Sequence
-    from http.client import HTTPMessage, HTTPResponse
-    from typing import IO
+    from http.client import HTTPResponse
+    from typing import NoReturn
     from urllib.request import Request
 
 
-class AiaRedirectHandler(HTTPRedirectHandler):
-    """Validate redirect destinations when private addresses are disallowed."""
+class _DisabledFileHandler(FileHandler):
+    """Reject file:// requests; AIA, CRL, and OCSP are HTTP(S)-only."""
 
-    def __init__(self, *, allow_private_ip: bool) -> None:
-        self.allow_private_ip = allow_private_ip
-        super().__init__()
+    def file_open(self, req: Request) -> NoReturn:
+        msg = f"'file' scheme is not supported: {req.full_url}"
+        raise URLError(msg)
 
-    def redirect_request(  # noqa: PLR0913, PLR0917
-        self,
-        req: Request,
-        fp: IO[bytes],
-        code: int,
-        msg: str,
-        headers: HTTPMessage,
-        newurl: str,
-    ) -> Request | None:
-        """Create a redirect request after validating its destination."""
-        if not self.allow_private_ip:
-            validate_and_get_http_host_port(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+class _DisabledFTPHandler(FTPHandler):
+    """Reject ftp:// requests; AIA, CRL, and OCSP are HTTP(S)-only."""
+
+    def ftp_open(self, req: Request) -> NoReturn:
+        msg = f"'ftp' scheme is not supported: {req.full_url}"
+        raise URLError(msg)
+
+
+class _DisabledDataHandler(DataHandler):
+    """Reject data: requests; AIA, CRL, and OCSP are HTTP(S)-only."""
+
+    def data_open(self, req: Request) -> NoReturn:
+        msg = f"'data' scheme is not supported: {req.full_url}"
+        raise URLError(msg)
 
 
 class PinnedConnectionMixin:
@@ -130,11 +135,21 @@ class PinnedHTTPSConnection(PinnedConnectionMixin, http.client.HTTPSConnection):
 
 
 class AiaHTTPHandler(HTTPHandler):
-    """Open HTTP requests using globally reachable, pinned addresses."""
+    """Validate the request URL, pinning the connection when strict."""
+
+    def __init__(self, *, allow_private_ip: bool) -> None:
+        self.allow_private_ip = allow_private_ip
+        super().__init__()
 
     def http_open(self, req: Request) -> HTTPResponse:
-        """Resolve and pin the request host before opening the connection."""
+        """Validate the URL, then connect directly or via a pinned address."""
         host, port = validate_and_get_http_host_port(req.full_url)
+
+        # Original handler behaviour
+        if self.allow_private_ip:
+            return super().http_open(req)
+
+        # Pinned connection to global host
         addresses = resolve_global_host(host, port)
         http_class = functools.partial(
             PinnedHTTPConnection,
@@ -144,16 +159,23 @@ class AiaHTTPHandler(HTTPHandler):
 
 
 class AiaHTTPSHandler(HTTPSHandler):
-    """Open HTTPS requests using globally reachable, pinned addresses."""
+    """Validate the request URL, pinning the connection when strict."""
 
     _context: ssl.SSLContext
 
-    def __init__(self) -> None:
+    def __init__(self, *, allow_private_ip: bool) -> None:
+        self.allow_private_ip = allow_private_ip
         super().__init__()
 
     def https_open(self, req: Request) -> HTTPResponse:
-        """Resolve and pin the request host before opening the TLS connection."""
+        """Validate the URL, then connect directly or via a pinned address."""
         host, port = validate_and_get_http_host_port(req.full_url)
+
+        # Original handler behaviour
+        if self.allow_private_ip:
+            return super().https_open(req)
+
+        # Pinned connection to global host
         addresses = resolve_global_host(host, port)
         http_class = functools.partial(
             PinnedHTTPSConnection,
@@ -172,11 +194,17 @@ def build_certificate_opener(
 ) -> OpenerDirector:
     """Build a urllib opener configured for AIA certificate downloads.
 
-    When private addresses are disallowed, redirects are restricted to valid
-    HTTP(S) URLs and connections use pinned global addresses. Environment
-    proxies are disabled in this mode because they could bypass address
-    pinning. When private addresses are allowed, urllib's default redirect
-    behavior and environment proxies are used for backwards compatibility.
+    The opener only ever serves HTTP(S) requests: `file://`, `ftp://`, and
+    `data:` handlers are excluded, and redirects are restricted to valid
+    HTTP(S) URLs. Both restrictions apply regardless of `allow_private_ip`,
+    because CPython's default handlers would otherwise serve `file://`
+    directly and follow redirects to `ftp://` even in permissive mode.
+
+    When private addresses are disallowed, connections are additionally
+    pinned to a validated global address, and environment proxies are
+    ignored because they could bypass address pinning. When private
+    addresses are allowed, environment proxies are honored for backwards
+    compatibility.
 
     Args:
         allow_private_ip: Whether non-global IP addresses may be used.
@@ -185,13 +213,13 @@ def build_certificate_opener(
         An opener configured for AIA certificate downloads.
     """
     handlers: list[BaseHandler] = [
-        AiaRedirectHandler(allow_private_ip=allow_private_ip),
+        AiaHTTPHandler(allow_private_ip=allow_private_ip),
+        AiaHTTPSHandler(allow_private_ip=allow_private_ip),
+        _DisabledFileHandler(),
+        _DisabledFTPHandler(),
+        _DisabledDataHandler(),
+        ProxyHandler() if allow_private_ip else ProxyHandler({}),
     ]
-    if allow_private_ip:
-        handlers.append(ProxyHandler())
-    else:
-        handlers.append(ProxyHandler({}))
-        handlers.extend((AiaHTTPHandler(), AiaHTTPSHandler()))
     return build_opener(*handlers)
 
 
