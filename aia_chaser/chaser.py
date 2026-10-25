@@ -275,7 +275,10 @@ class AiaChaser:
             host: The hostname to fetch the certificate chain for.
             port: The port to connect to. Defaults to 443.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the certificate chain. Defaults to True.
 
         Returns:
@@ -321,7 +324,10 @@ class AiaChaser:
             host: The hostname to fetch the CA certificate chain for.
             port: The port to connect to. Defaults to 443.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the CA certificate chain. Defaults to True.
 
         Returns:
@@ -355,7 +361,10 @@ class AiaChaser:
         Args:
             url_string: URL to fetch the certificate chain for.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the certificate chain. Defaults to True.
 
         Returns:
@@ -390,7 +399,10 @@ class AiaChaser:
         Args:
             url_string: URL to fetch the CA certificate chain for.
             verify_config: Configuration for verifying the certificate chain.
-                If None, a default configuration is used.
+                If None, a default configuration inherits the chaser's IP
+                policy. A chaser with allow_private_ip=False always enforces
+                that policy, even if this configuration explicitly sets
+                allow_private_ip=True. The supplied configuration is not mutated.
             verify: Whether to verify the CA certificate chain. Defaults to True.
 
         Returns:
