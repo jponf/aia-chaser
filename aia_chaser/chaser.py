@@ -32,7 +32,7 @@ from aia_chaser.utils.cert_utils import (
     load_ssl_ca_certificates,
 )
 from aia_chaser.utils.http_pinning import get_cached_certificate_opener
-from aia_chaser.utils.http_utils import validate_and_get_http_host_port
+from aia_chaser.utils.http_utils import http_urlopen_with_retry
 from aia_chaser.utils.network import create_global_unicast_connection
 from aia_chaser.utils.url import extract_host_port_from_url, extract_scheme_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
@@ -561,12 +561,12 @@ def _download_certificate(
             category=UserWarning,
             stacklevel=2,
         )
-    validate_and_get_http_host_port(url_string)
 
     try:
-        with opener.open(
+        with http_urlopen_with_retry(
             url_string,
             timeout=DEFAULT_URLOPEN_TIMEOUT,
+            opener=opener,
         ) as response:
             if response.status != http.HTTPStatus.OK:
                 raise CertificateDownloadError(

@@ -205,3 +205,30 @@ def validate_and_get_http_host_port(url_string: str) -> tuple[str, int]:
         )
 
     return host, port
+
+
+def http_urlopen_with_retry(
+    url: str | Request,
+    timeout: float | None = None,
+    retry_config: RetryConfig | None = None,
+    opener: OpenerDirector | None = None,
+) -> HTTPResponse:
+    """Validate that `url` is HTTP(S), then open it with automatic retry.
+
+    This is the HTTP(S)-only counterpart to `urlopen_with_retry`.
+
+    Raises:
+        InvalidUrlError: If the URL is malformed, missing a host, or
+            uses a scheme other than HTTP or HTTPS.
+        HTTPError: If the request fails after all retries or with
+            a non-retryable status code.
+        URLError: If a network error occurs.
+    """
+    url_string = url.full_url if isinstance(url, Request) else url
+    validate_and_get_http_host_port(url_string)
+    return urlopen_with_retry(
+        url,
+        timeout=timeout,
+        retry_config=retry_config,
+        opener=opener,
+    )

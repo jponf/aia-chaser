@@ -50,11 +50,7 @@ from aia_chaser.utils.cert_utils import (
     select_rsa_padding_for_signature_algorithm_oid,
 )
 from aia_chaser.utils.http_pinning import get_cached_certificate_opener
-from aia_chaser.utils.http_utils import (
-    RetryConfig,
-    urlopen_with_retry,
-    validate_and_get_http_host_port,
-)
+from aia_chaser.utils.http_utils import RetryConfig, http_urlopen_with_retry
 
 
 if TYPE_CHECKING:
@@ -395,8 +391,7 @@ def _download_any_crl(
 
     for idx, url in enumerate(crl_urls):
         try:
-            validate_and_get_http_host_port(url)
-            with urlopen_with_retry(
+            with http_urlopen_with_retry(
                 url,
                 timeout=DEFAULT_URLOPEN_TIMEOUT,
                 retry_config=retry_config,
@@ -577,15 +572,26 @@ def _run_ocsp_request(
     opener = get_cached_certificate_opener(
         allow_private_ip=config.allow_private_ip,
     )
+
     try:
-        validate_and_get_http_host_port(ocsp_url)
-        with urlopen_with_retry(
-            Request(  # noqa: S310
-                url=ocsp_url,
-                data=ocsp_request.public_bytes(serialization.Encoding.DER),
-                headers={"Content-Type": "application/ocsp-request"},
-                method="POST",
+        request = Request(  # noqa: S310
+            url=ocsp_url,
+            data=ocsp_request.public_bytes(serialization.Encoding.DER),
+            headers={"Content-Type": "application/ocsp-request"},
+            method="POST",
+        )
+    except ValueError as err:
+        raise OcspDownloadError(
+            ocsp_url=ocsp_url,
+            reason=InvalidUrlError(
+                message="cannot build request object with given url",
+                url_string=ocsp_url,
             ),
+        ) from err
+
+    try:
+        with http_urlopen_with_retry(
+            request,
             timeout=DEFAULT_URLOPEN_TIMEOUT,
             retry_config=config.retry_config,
             opener=opener,

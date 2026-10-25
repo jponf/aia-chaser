@@ -165,7 +165,10 @@ def test_download_any_crl_falls_back_after_invalid_scheme(
     fake_response.read.return_value = crl_bytes
 
     mock_urlopen = Mock(return_value=fake_response)
-    monkeypatch.setattr(verify, "urlopen_with_retry", mock_urlopen)
+    monkeypatch.setattr(
+        "aia_chaser.utils.http_utils.urlopen_with_retry",
+        mock_urlopen,
+    )
 
     crl = _download_any_crl(
         ["file:///etc/passwd", "http://public.example/crl.crl"],
@@ -248,7 +251,7 @@ def test_download_any_crl_uses_cached_opener(
     fake_response.read.return_value = crl_bytes
 
     mock_urlopen = Mock(return_value=fake_response)
-    monkeypatch.setattr(verify, "urlopen_with_retry", mock_urlopen)
+    monkeypatch.setattr(verify, "http_urlopen_with_retry", mock_urlopen)
 
     _download_any_crl(["http://public.example/crl.crl"], allow_private_ip=False)
 
@@ -371,7 +374,7 @@ def test_ocsp_request_uses_pinned_opener(
     ocsp_req = builder.build()
 
     mock_urlopen = Mock(side_effect=RuntimeError("stop after open"))
-    monkeypatch.setattr(verify, "urlopen_with_retry", mock_urlopen)
+    monkeypatch.setattr(verify, "http_urlopen_with_retry", mock_urlopen)
 
     with pytest.raises(RuntimeError, match="stop after open"):
         _run_ocsp_request(
