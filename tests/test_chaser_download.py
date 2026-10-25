@@ -13,6 +13,7 @@ from aia_chaser.exceptions import (
     CertificateDownloadError,
     InvalidUrlError,
     NonGlobalAddressError,
+    NoValidAiaCaUrlError,
 )
 from aia_chaser.utils import http_pinning
 
@@ -164,6 +165,21 @@ def test_try_download_certificate_aggregates_non_global_url_failures(
 
     assert exc_info.value.errors == errors
     assert download.call_count == len(errors)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ldap://ldap.example/certs?certificateName=issuer",
+        "file:///etc/ssl/certs/issuer.crt",
+    ],
+)
+def test_try_download_certificate_raises_without_http_url(url: str) -> None:
+    """The downloader should raise NoValidAiaCaUrlError when no AIA URL is HTTP(S)."""
+    with pytest.raises(NoValidAiaCaUrlError) as exc_info:
+        chaser.try_download_certificate([url])
+
+    assert exc_info.value.urls == [url]
 
 
 @pytest.mark.parametrize("url", ["ftp://example.com/cert.crt", "http"])

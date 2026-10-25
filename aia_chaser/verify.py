@@ -339,6 +339,17 @@ def verify_crl_status(
         retry_config: Configuration for HTTP retry behavior.
         allow_private_ip: Whether non-global IP addresses may be used to
             download the CRL. Defaults to True for backwards compatibility.
+
+    Raises:
+        CrlHttpError:
+            An HTTP error happened while downloading the CRL.
+        CrlDownloadError:
+            The CRL URL is invalid, resolves to a disallowed address, or
+            the download failed at the network level.
+        CrlParseError:
+            The downloaded CRL data could not be parsed.
+        CrlRevokedError:
+            The certificate's serial number is present in the CRL.
     """
     verification_time = verification_time or _get_default_verification_time()
     crl_urls = extract_crl_urls(certificate)

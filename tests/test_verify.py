@@ -30,6 +30,7 @@ from aia_chaser.verify import (
     _download_any_crl,
     _run_ocsp_request,
     verify_certificate_chain,
+    verify_ocsp_status,
 )
 from tests.conftest import make_addrinfo
 
@@ -405,3 +406,74 @@ def test_verify_certificate_chain_passes_allow_private_ip(
 
     assert mock_crl.call_args.kwargs["allow_private_ip"] is False
     assert mock_ocsp.call_args.kwargs["config"].allow_private_ip is False
+
+
+def test_verify_certificate_chain_wraps_crl_download_error(
+    host_and_ca_chain: Sequence[x509.Certificate],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verification should wrap a rejected CRL URL in CertificateChainError."""
+    monkeypatch.setattr(
+        verify,
+        "extract_crl_urls",
+        Mock(return_value=["file:///etc/passwd"]),
+    )
+
+    with pytest.raises(CertificateChainError) as exc_info:
+        verify_certificate_chain(
+            host_and_ca_chain,
+            config=VerifyCertificatesConfig(crl_enabled=True),
+        )
+
+    reason = exc_info.value.reason
+    assert isinstance(reason, CrlDownloadError)
+    assert isinstance(reason.reason, InvalidUrlError)
+
+
+def test_verify_certificate_chain_wraps_ocsp_download_error(
+    host_and_ca_chain: Sequence[x509.Certificate],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verification should wrap a blocked OCSP responder in CertificateChainError."""
+    # path aia information and getaddrinfo to return a private IP
+    monkeypatch.setattr(
+        verify,
+        "extract_aia_information",
+        Mock(
+            return_value=Mock(
+                ca_issuers=[],
+                ocsp_urls=["http://internal.example/ocsp"],
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        Mock(return_value=[make_addrinfo("127.0.0.1")]),
+    )
+
+    # Verify ocsp should raise OcspDownloadError
+    # which in turns is triggered by a NonGlobalAddressError
+    with pytest.raises(OcspDownloadError) as base_exc_info:
+        verify_ocsp_status(
+            host_and_ca_chain[0],
+            host_and_ca_chain[1],
+            VerifyOcspConfig(allow_private_ip=False),
+        )
+    assert isinstance(base_exc_info.value.reason, NonGlobalAddressError)
+    assert isinstance(base_exc_info.value.__cause__, NonGlobalAddressError)
+
+    # Verify certificate chain should wrap the OcspDownloadError in
+    # a CertificateChainError
+    with pytest.raises(CertificateChainError) as exc_info:
+        verify_certificate_chain(
+            host_and_ca_chain,
+            config=VerifyCertificatesConfig(
+                ocsp_enabled=True,
+                allow_private_ip=False,
+            ),
+        )
+
+    reason = exc_info.value.reason
+    assert isinstance(reason, OcspDownloadError)
+    assert isinstance(reason.reason, NonGlobalAddressError)
