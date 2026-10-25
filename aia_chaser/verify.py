@@ -413,7 +413,7 @@ def _download_any_crl(
     raise RuntimeError(msg)
 
 
-_CRL_PARSE_FNS = (x509.load_der_x509_crl, x509.load_der_x509_crl)
+_CRL_PARSE_FNS = (x509.load_der_x509_crl, x509.load_pem_x509_crl)
 
 
 def _try_parse_crl(data: bytes) -> x509.CertificateRevocationList:
