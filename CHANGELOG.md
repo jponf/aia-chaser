@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.6.0] - 2026-10-25
+
+### 🚀 Features
+
+- *(aia)* Add allow_private_ip option for OCSP and CRL revocation checks
+- *(aia)* Expose configurable certificate download retries
+- *(http)* Honor Retry-After headers in HTTP retries
+- *(http)* Centralize HTTP-only downloads with retries
+- *(cache)* Expire AIA certificates after 12 hours
+
+### 🐛 Bug Fixes
+
+- Increase aiohttp max_line_size/max_field_size if the host returns large headers (e.g. CSP)
+- Catch CRL/OCSP download errors in verify_certificate_chain
+- Reject file/ftp/data schemes in the certificate opener
+- _try_parse_crl tried DER loader twice instead of PEM
+
+### 📚 Documentation
+
+- Clarify that AIA, OCSP, and CRL downloads are limited to HTTP(S)
+- *(chaser)* Clarify strict IP policy precedence during verification
+
+### 🧪 Testing
+
+- Make resolver test portable on Windows
+- Cover AIA URL rejection and revocation error wrapping
+
+### ⚙️ Miscellaneous Tasks
+
+- Add Python 3.15 to the test matrix
+
 ## [3.5.0] - 2026-10-21
 
 ### 🚀 Features
