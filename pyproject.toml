@@ -49,6 +49,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
 python = ">=3.9,!=3.9.0,!=3.9.1,<4.0"
+cachetools = ">=5.2.0"                # first version with cache_clear
 cryptography = ">=44.0.1"
 tenacity = ">=8"
 

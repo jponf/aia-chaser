@@ -79,6 +79,40 @@ def test_download_uses_opener_for_strict_mode(
     assert opener.open.call_args.args[0] == url
 
 
+def test_download_cache_separates_address_policies(  # noqa: ANN201
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The cache should reuse results only within the same address policy."""
+    # Fake cached certificate opener that returns fake response
+    response = MagicMock(status=200)
+    response.__enter__.return_value = response
+    response.read.return_value = b"certificate"
+
+    opener = Mock()
+    opener.open.return_value = response
+    get_opener = Mock(return_value=opener)
+    monkeypatch.setattr(chaser, "get_cached_certificate_opener", get_opener)
+
+    certificates = [object()]
+    monkeypatch.setattr(
+        chaser,
+        "_try_parse_certificate",
+        Mock(return_value=certificates),
+    )
+    urls = ["http://public.example/issuer.crt"]
+
+    # Distinct policy must call get_opener twice (not cached)
+    assert chaser.try_download_certificate(urls, allow_private_ip=True) == certificates
+    assert chaser.try_download_certificate(urls, allow_private_ip=False) == certificates
+
+    assert opener.open.call_count == 2  # noqa: PLR2004
+    assert get_opener.call_count == 2  # noqa: PLR2004
+    assert [call.kwargs["allow_private_ip"] for call in get_opener.call_args_list] == [
+        True,
+        False,
+    ]
+
+
 def test_download_certificate_warns_on_https(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -186,28 +220,40 @@ def test_try_download_certificate_raises_without_http_url(url: str) -> None:
 def test_download_certificate_raises_on_invalid_scheme(url: str) -> None:
     """The downloader should reject unsupported or missing schemes."""
     with pytest.raises(InvalidUrlError, match="invalid HTTP URL"):
-        chaser._download_certificate(url, opener=Mock())  # noqa: SLF001
+        chaser._download_certificate(url)  # noqa: SLF001
 
 
-def test_download_certificate_wraps_network_error() -> None:
+def test_download_certificate_wraps_network_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     opener = Mock()
     opener.open.side_effect = URLError("connection refused")
+    monkeypatch.setattr(
+        chaser,
+        "get_cached_certificate_opener",
+        Mock(return_value=opener),
+    )
 
     with pytest.raises(CertificateDownloadError, match="could not download"):
         chaser._download_certificate(  # noqa: SLF001
             "http://failing.example/cert.crt",
-            opener=opener,
         )
 
 
-def test_download_certificate_raises_on_non_ok_status() -> None:
+def test_download_certificate_raises_on_non_ok_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     response = MagicMock(status=404)
     response.__enter__.return_value = response
     opener = Mock()
     opener.open.return_value = response
+    monkeypatch.setattr(
+        chaser,
+        "get_cached_certificate_opener",
+        Mock(return_value=opener),
+    )
 
     with pytest.raises(CertificateDownloadError, match="could not download"):
         chaser._download_certificate(  # noqa: SLF001
             "http://notfound.example/cert.crt",
-            opener=opener,
         )

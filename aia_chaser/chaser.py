@@ -3,15 +3,16 @@ from __future__ import annotations
 import collections
 import contextlib
 import dataclasses
-import functools
 import http
 import http.client
 import socket
 import ssl
 import warnings
+from threading import RLock
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.error import URLError
 
+from cachetools import TTLCache, cached
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
 
@@ -40,7 +41,6 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-    from urllib.request import OpenerDirector
 
 
 __all__ = ["AiaChaser"]
@@ -515,11 +515,13 @@ def try_download_certificate(
     if not http_urls:
         raise NoValidAiaCaUrlError(urls=urls)
 
-    opener = get_cached_certificate_opener(allow_private_ip=allow_private_ip)
     errors = []
     for http_url in http_urls:
         try:
-            return _download_certificate(http_url, opener=opener)
+            return _download_certificate(
+                http_url,
+                allow_private_ip=allow_private_ip,
+            )
         except (  # noqa: PERF203
             CertificateDownloadError,
             CertificateParseError,
@@ -531,17 +533,31 @@ def try_download_certificate(
     raise AiaChaseExhaustedError(errors=errors)
 
 
-@functools.lru_cache(maxsize=DOWNLOAD_CACHE_SIZE)
+@cached(
+    cache=TTLCache(
+        maxsize=DOWNLOAD_CACHE_SIZE,
+        ttl=12 * 60 * 60,
+    ),
+    key=lambda url_string, *, allow_private_ip=True, **_kwargs: (
+        url_string,
+        allow_private_ip,
+    ),
+    lock=RLock(),
+)
 def _download_certificate(
     url_string: str,
     *,
-    opener: OpenerDirector,
+    allow_private_ip: bool = True,
 ) -> list[x509.Certificate]:
     """Download and parse X.509 certificates from an AIA URL.
 
+    Successful results are cached by URL and private IP policy for 12 hours.
+    Cache hits do not perform network requests or reapply the address policy.
+
     Args:
         url_string: URL pointing to the certificate to download.
-        opener: Opener configured for the address policy.
+        allow_private_ip: Whether non-global IP addresses may be used.
+            Also partitions the cache by address policy.
 
     Returns:
         A list of parsed X.509 certificates.
@@ -554,6 +570,7 @@ def _download_certificate(
         NonGlobalAddressError: If the configured opener rejects the URL host
             because it resolves to a non-global address.
     """
+    opener = get_cached_certificate_opener(allow_private_ip=allow_private_ip)
     scheme = extract_scheme_from_url(url_string)
     if scheme == "https":
         warnings.warn(
