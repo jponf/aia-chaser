@@ -33,7 +33,7 @@ from aia_chaser.utils.cert_utils import (
     load_ssl_ca_certificates,
 )
 from aia_chaser.utils.http_pinning import get_cached_certificate_opener
-from aia_chaser.utils.http_utils import http_urlopen_with_retry
+from aia_chaser.utils.http_utils import RetryConfig, http_urlopen_with_retry
 from aia_chaser.utils.network import create_global_unicast_connection
 from aia_chaser.utils.url import extract_host_port_from_url, extract_scheme_from_url
 from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
@@ -66,6 +66,9 @@ class AiaChaser:
             root CAs. If not given a new SSLContext is created with the
             default certificates.
         trusted_cas: Additional trusted CA certificates.
+        retry_config: Retry settings for AIA downloads on cache misses. None
+            uses defaults (see
+            [`RetryConfig`][aia_chaser.utils.http_utils.RetryConfig]).
         allow_private_ip: Whether non-global IP addresses may be used for
             the initial connection, AIA certificate downloads, and OCSP/CRL
             revocation checks. Defaults to True for backwards compatibility;
@@ -80,8 +83,10 @@ class AiaChaser:
         trusted_cas: Sequence[x509.Certificate] | None = None,
         *,
         allow_private_ip: bool = True,
+        retry_config: RetryConfig | None = None,
     ) -> None:
         self.allow_private_ip = allow_private_ip
+        self.retry_config = retry_config
         trusted_cas = trusted_cas or []
 
         if context is None:
@@ -183,6 +188,7 @@ class AiaChaser:
                 try_download_certificate(
                     cert_info.aia_ca_issuers,
                     allow_private_ip=self.allow_private_ip,
+                    retry_config=self.retry_config,
                 ),
             )
 
@@ -499,6 +505,7 @@ def try_download_certificate(
     urls: Sequence[str],
     *,
     allow_private_ip: bool = True,
+    retry_config: RetryConfig | None = None,
 ) -> list[x509.Certificate]:
     """Try AIA URLs until one downloads and parses successfully.
 
@@ -508,6 +515,8 @@ def try_download_certificate(
 
     Args:
         urls: AIA certificate URLs to try in order.
+        retry_config: Retry settings for cache misses. None uses defaults (see
+            [`RetryConfig`][aia_chaser.utils.http_utils.RetryConfig]).
         allow_private_ip: Whether downloads may connect to non-global IP
             addresses. If False, non-global DNS answers are skipped.
     """
@@ -521,6 +530,7 @@ def try_download_certificate(
             return _download_certificate(
                 http_url,
                 allow_private_ip=allow_private_ip,
+                retry_config=retry_config,
             )
         except (  # noqa: PERF203
             CertificateDownloadError,
@@ -548,6 +558,7 @@ def _download_certificate(
     url_string: str,
     *,
     allow_private_ip: bool = True,
+    retry_config: RetryConfig | None = None,
 ) -> list[x509.Certificate]:
     """Download and parse X.509 certificates from an AIA URL.
 
@@ -556,6 +567,8 @@ def _download_certificate(
 
     Args:
         url_string: URL pointing to the certificate to download.
+        retry_config: Retry settings for cache misses, excluded from the cache
+            key.
         allow_private_ip: Whether non-global IP addresses may be used.
             Also partitions the cache by address policy.
 
@@ -584,6 +597,7 @@ def _download_certificate(
             url_string,
             timeout=DEFAULT_URLOPEN_TIMEOUT,
             opener=opener,
+            retry_config=retry_config,
         ) as response:
             if response.status != http.HTTPStatus.OK:
                 raise CertificateDownloadError(

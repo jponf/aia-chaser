@@ -54,13 +54,18 @@ class RetryConfig:
             Defaults to 10.0.
 
         sleep: Callable used to wait between retries. Defaults to time.sleep.
+            Excluded from configuration equality and hashing.
     """
 
     max_attempts: int = 3
     wait_multiplier: float = 0.5
     wait_max: float = 10.0
 
-    sleep: Callable[[float], None] = time.sleep
+    sleep: Callable[[float], None] = dataclasses.field(
+        default=time.sleep,
+        compare=False,
+        hash=False,
+    )
 
 
 def extract_retry_after(error: HTTPError) -> float | None:

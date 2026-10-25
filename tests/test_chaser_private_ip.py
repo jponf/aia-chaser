@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from aia_chaser import AiaChaser, NonGlobalAddressError, chaser
+from aia_chaser.utils.http_utils import RetryConfig
 from aia_chaser.verify import VerifyCertificatesConfig
 from tests.conftest import AIA_CA_ISSUER_URL, make_addrinfo
 
@@ -45,18 +46,22 @@ def test_chaser_passes_private_ip_option_to_issuer_fetch(
     host_and_ca_chain: Sequence[x509.Certificate],
 ) -> None:
     leaf_cert, trusted_cert = host_and_ca_chain
+    retry_config = RetryConfig(max_attempts=1)
     chaser_instance = AiaChaser(
         trusted_cas=[trusted_cert],
         allow_private_ip=False,
+        retry_config=retry_config,
     )
 
     def fetch_issuer(
         urls: list[str],
         *,
         allow_private_ip: bool = True,
+        retry_config: RetryConfig | None = None,
     ) -> list[x509.Certificate]:
         assert urls == [AIA_CA_ISSUER_URL]
         assert allow_private_ip is False
+        assert retry_config is chaser_instance.retry_config
         return [trusted_cert]
 
     monkeypatch.setattr(chaser, "try_download_certificate", fetch_issuer)

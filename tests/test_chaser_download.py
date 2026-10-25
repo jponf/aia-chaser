@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import socket
+from email.message import Message
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, Mock
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -16,6 +17,7 @@ from aia_chaser.exceptions import (
     NoValidAiaCaUrlError,
 )
 from aia_chaser.utils import http_pinning
+from aia_chaser.utils.http_utils import RetryConfig
 
 
 if TYPE_CHECKING:
@@ -111,6 +113,108 @@ def test_download_cache_separates_address_policies(  # noqa: ANN201
         True,
         False,
     ]
+
+
+@pytest.mark.parametrize("max_attempts", [1, 2])
+def test_aia_download_respects_retry_attempts(  # noqa: ANN201
+    monkeypatch: pytest.MonkeyPatch,
+    max_attempts: int,
+):
+    """AIA downloads should honor the configured number of attempts."""
+    # Set up mock response
+    url = "http://public.example/retry.crt"
+    response = MagicMock(status=200)
+    response.__enter__.return_value = response
+    response.read.return_value = b"certificate"
+
+    # Opener fakes a 503 (retryable) error and returns fake response on next attempt
+    opener = Mock()
+    opener.open.side_effect = [
+        HTTPError(url, 503, "Unavailable", Message(), None),
+        response,
+    ]
+    monkeypatch.setattr(
+        chaser,
+        "get_cached_certificate_opener",
+        Mock(return_value=opener),
+    )
+
+    # Parse function returns a fake certificate object
+    certificates = [object()]
+    monkeypatch.setattr(
+        chaser,
+        "_try_parse_certificate",
+        Mock(return_value=certificates),
+    )
+
+    # Retry configuration
+    sleep = Mock()
+    config = RetryConfig(max_attempts=max_attempts, sleep=sleep)
+
+    # If only one attempt is allowed it should raise otherwise
+    # succeed with fake certificate
+    if max_attempts == 1:
+        with pytest.raises(AiaChaseExhaustedError):
+            chaser.try_download_certificate([url], retry_config=config)
+        sleep.assert_not_called()
+    else:
+        assert (
+            chaser.try_download_certificate([url], retry_config=config) == certificates
+        )
+        sleep.assert_called_once_with(config.wait_multiplier)
+
+    assert opener.open.call_count == max_attempts
+
+
+def test_aia_cache_ignores_retry_configuration(  # noqa: ANN201
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Cached certificates should be reused across different retry configurations."""
+    # Set up mock response
+    response = MagicMock(status=200)
+    response.__enter__.return_value = response
+    response.read.return_value = b"certificate"
+
+    # Opener returns the fake response on a cache miss
+    opener = Mock()
+    opener.open.return_value = response
+    monkeypatch.setattr(
+        chaser,
+        "get_cached_certificate_opener",
+        Mock(return_value=opener),
+    )
+
+    # Parse function returns a fake certificate object
+    certificates = [object()]
+    monkeypatch.setattr(
+        chaser,
+        "_try_parse_certificate",
+        Mock(return_value=certificates),
+    )
+
+    # Custom sleep should not affect configuration equality or hashing
+    sleep = Mock()
+
+    # Use default settings, disabled retries, and an increased attempt limit
+    configs = [
+        None,
+        RetryConfig(max_attempts=1, sleep=sleep),
+        RetryConfig(max_attempts=5),
+    ]
+
+    # First call populates the cache; other configurations reuse the result
+    for config in configs:
+        assert (
+            chaser.try_download_certificate(
+                ["http://public.example/cached.crt"],
+                retry_config=config,
+            )
+            == certificates
+        )
+
+    # Only one download should occur, with no retry sleeps
+    opener.open.assert_called_once()
+    sleep.assert_not_called()
 
 
 def test_download_certificate_warns_on_https(

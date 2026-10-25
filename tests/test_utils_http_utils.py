@@ -15,6 +15,16 @@ from aia_chaser.utils.http_utils import (
 )
 
 
+def test_retry_config_ignores_sleep_in_equality_and_hashing():  # noqa: ANN201
+    """Retry configurations should ignore sleep callables in equality and hashing."""
+    first = RetryConfig(sleep=Mock())
+    second = RetryConfig(sleep=Mock())
+
+    assert first == second
+    assert hash(first) == hash(second)
+    assert first != RetryConfig(max_attempts=1)
+
+
 def test_validate_http_host_port_accepts_uppercase_scheme() -> None:
     """The HTTP validator should accept uppercase URL schemes."""
     assert validate_and_get_http_host_port("HTTPS://Example.com/path") == (
