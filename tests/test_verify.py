@@ -127,21 +127,21 @@ def test_verify_chain_of_2_offset_naive_validation_time(
 
 def test_verify_chain_of_2_root_not_trusted(
     host_and_ca_chain: Sequence[x509.Certificate],
-    certifi_trusted: Mapping[x509.Name, x509.Certificate],
+    certifi_certificates: Mapping[x509.Name, x509.Certificate],
 ) -> None:
     with pytest.raises(CertificateChainError) as exc_info:
-        verify_certificate_chain(host_and_ca_chain, trusted=certifi_trusted)
+        verify_certificate_chain(host_and_ca_chain, trusted=certifi_certificates)
     assert type(exc_info.value.reason) is RootCertificateNotFoundError
 
 
 def test_verify_chain_of_2_root_trusted(
     host_and_ca_chain: Sequence[x509.Certificate],
-    certifi_trusted: Mapping[x509.Name, x509.Certificate],
+    certifi_certificates: Mapping[x509.Name, x509.Certificate],
 ) -> None:
     root_ca = host_and_ca_chain[-1]
     verify_certificate_chain(
         host_and_ca_chain,
-        trusted={root_ca.subject: root_ca, **certifi_trusted},
+        trusted={root_ca.subject: root_ca, **certifi_certificates},
     )
 
 

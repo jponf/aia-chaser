@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.parametrize("url_string", TEST_URLS_SUBSET)
-def test_pycurl_with_pem_file(url_string: str, chaser: AiaChaser) -> None:
-    ca_chain = chaser.fetch_ca_chain_for_url(url_string)
+def test_pycurl_with_pem_file(url_string: str, chaser_certifi: AiaChaser) -> None:
+    ca_chain = chaser_certifi.fetch_ca_chain_for_url(url_string)
 
     with temp_pem_file(ca_chain) as pem_path:
         curl = pycurl.Curl()
