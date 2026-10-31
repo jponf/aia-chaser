@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.6.1] - 2026-10-31
+
+### 🚀 Features
+
+- Add optional certifi trust-store support
+
+### 📚 Documentation
+
+- Document certifi trust-store setup and API
+
+### 🧪 Testing
+
+- Use certifi-based fixtures to avoid relying on system trust store
+- Disable unauthorized revoked OCSP endpoint
+
 ## [3.6.0] - 2026-10-25
 
 ### 🚀 Features
