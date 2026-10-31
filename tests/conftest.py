@@ -87,7 +87,7 @@ EXPIRED_URLS = (
 REVOKED_CRL_URLS = ("https://revoked.badssl.com/",)
 
 REVOKED_OCSP_URLS = (
-    "https://revoked.grc.com/",
+    # "https://revoked.grc.com/",  # started failing with unauthorized response  # noqa: ERA001
     "https://revoked-rsa-dv.ssl.com/",
     "https://revoked-ecc-dv.ssl.com/",
     "https://revoked-ecc-ev.ssl.com/",
