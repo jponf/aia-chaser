@@ -58,6 +58,36 @@ destinations. Environment proxies are also ignored when this option is
 disabled to prevent bypassing address pinning. Public unicast hosts remain
 reachable; this is not an outbound host allowlist.
 
+## Using certifi
+
+To use certifi's CA bundle as the chaser's trust store, install the optional
+extra:
+
+```sh
+pip install "aia-chaser[certifi]"  # pip
+poetry add "aia-chaser[certifi]"   # Poetry
+uv add "aia-chaser[certifi]"       # uv
+```
+
+Pass the context created by `create_certifi_context()` to `AiaChaser`:
+
+```Python
+from aia_chaser import AiaChaser
+from aia_chaser.utils.certifi import create_certifi_context
+
+chaser = AiaChaser(context=create_certifi_context())
+```
+
+By default, this context disables hostname and certificate verification for
+the initial AIA-chasing connection. The chaser verifies the completed chain
+after retrieving missing certificates. Do not use this initial context for
+ordinary HTTPS requests. Instead, use the verified context returned by
+`chaser.make_ssl_context_for_url(url)`, as shown below.
+
+For ordinary TLS connections without AIA chasing, use
+`create_certifi_context(for_chaser=False)` to retain standard hostname and
+certificate verification.
+
 ## Examples
 
 The following examples showcase how to use this library with some typical

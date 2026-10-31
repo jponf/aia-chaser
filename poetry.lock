@@ -654,11 +654,12 @@ version = "2026.10.19"
 description = "Python package for providing Mozilla's CA Bundle."
 optional = false
 python-versions = ">=3.7"
-groups = ["dev", "docs", "test"]
+groups = ["main", "dev", "docs", "test"]
 files = [
     {file = "certifi-2026.10.19-py3-none-any.whl", hash = "sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b"},
     {file = "certifi-2026.10.19.tar.gz", hash = "sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae"},
 ]
+markers = {main = "extra == \"certifi\""}
 
 [[package]]
 name = "cffi"
@@ -5332,7 +5333,10 @@ enabler = ["pytest-enabler (>=2.2)"]
 test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more_itertools", "pytest (>=6,!=8.1.*)", "pytest-ignore-flaky"]
 type = ["pytest-mypy"]
 
+[extras]
+certifi = ["certifi"]
+
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,!=3.9.0,!=3.9.1,<4.0"
-content-hash = "a1a25f5762c21d2309dc85d01d744182d7c18ceaea95e9eb1cbf3b78b56e316d"
+content-hash = "5fb0f751113c713408ea96f05db0a026fbcd57fd00495e3984507d725e9c9af4"

@@ -13,9 +13,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509 import NameOID
 
+from aia_chaser import AiaChaser
+from aia_chaser.utils.cert_utils import load_ssl_ca_certificates
+from aia_chaser.utils.certifi import create_certifi_context
+
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    import ssl
+    from collections.abc import Mapping, Sequence
 
     from cryptography.hazmat.primitives.asymmetric.rsa import (
         RSAPrivateKey,
@@ -82,7 +87,7 @@ EXPIRED_URLS = (
 REVOKED_CRL_URLS = ("https://revoked.badssl.com/",)
 
 REVOKED_OCSP_URLS = (
-    "https://revoked.grc.com/",
+    # "https://revoked.grc.com/",  # started failing with unauthorized response  # noqa: ERA001
     "https://revoked-rsa-dv.ssl.com/",
     "https://revoked-ecc-dv.ssl.com/",
     "https://revoked-ecc-ev.ssl.com/",
@@ -198,3 +203,21 @@ def host_and_ca_chain(
         ),
         root_ca,
     ]
+
+
+@pytest.fixture(scope="session")
+def certifi_context() -> ssl.SSLContext:
+    return create_certifi_context(for_chaser=True)
+
+
+@pytest.fixture
+def chaser_certifi(certifi_context: ssl.SSLContext) -> AiaChaser:
+    return AiaChaser(context=certifi_context)
+
+
+@pytest.fixture(scope="session")
+def certifi_certificates(
+    certifi_context: ssl.SSLContext,
+) -> Mapping[x509.Name, x509.Certificate]:
+    certs = load_ssl_ca_certificates(certifi_context, force_load=False)
+    return {cert.subject: cert for cert in certs}

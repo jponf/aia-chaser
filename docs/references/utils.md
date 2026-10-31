@@ -4,6 +4,10 @@
     options:
         show_root_heading: true
 
+::: aia_chaser.utils.certifi
+    options:
+        show_root_heading: true
+
 ::: aia_chaser.utils.http_pinning
     options:
         show_root_heading: true

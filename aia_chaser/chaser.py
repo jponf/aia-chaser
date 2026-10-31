@@ -9,6 +9,7 @@ import socket
 import ssl
 import warnings
 from threading import RLock
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 from urllib.error import URLError
 
@@ -40,7 +41,7 @@ from aia_chaser.verify import VerifyCertificatesConfig, verify_certificate_chain
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
 
 __all__ = ["AiaChaser"]
@@ -108,6 +109,19 @@ class AiaChaser:
         self._trusted = {ca_cert.subject: ca_cert for ca_cert in ssl_trusted_cert}
         for cert in trusted_cas:
             self.add_trusted_cert(cert)  # self._context and self._trusted must exist
+
+    @property
+    def trusted_certificates(self) -> Mapping[x509.Name, x509.Certificate]:
+        """Trusted CA certificates indexed by subject name.
+
+        The mapping includes certificates loaded from the SSL context and
+        certificates provided through `trusted_cas` or `add_trusted_cert`.
+
+        Returns:
+            A mapping from each trusted certificate's subject to the
+                certificate.
+        """
+        return MappingProxyType(self._trusted)
 
     def add_trusted_cert(self, cert: x509.Certificate) -> None:
         """Trust the provided certificate.
